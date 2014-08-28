@@ -10,10 +10,10 @@
         # $db.execute("PRAGMA foreign_keys = ON;") in connect
         #
         #SELECT last_insert_rowid()
-# Expand text
+# Expand more text
 #
 # Done
-# Convert to spatialite
+#   Convert to spatialite
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -39,6 +39,8 @@ use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
 use DBI;
 use processFaaData;
+use File::Slurp;
+use Params::Validate qw(:all);
 
 #Subroutines to calculate geometry, called via dispatch table %hash_of_geometry_creators
 use geometryProcessors;
@@ -49,8 +51,7 @@ use textExpanders;
 #Subroutines to normalize tables, called via dispatch table %hash_of_normalizers
 use normalizingProcessors;
 
-use File::Slurp;
-use Params::Validate qw(:all);
+
 
 use vars qw/ %opt /;
 
@@ -158,39 +159,39 @@ my %hash_of_parsers = (
     blank:1
     '
     },
-    ANR => {
-        'ANR1' => '
-        record_type_indicator:4
-        origin_facility_location_identifier:5
-        destination_facility_location_identifier:5
-        type_of_route_code_anr:3
-        route_identifier_sequence_number_1_99:2
-        type_of_route_description_advanced_nav_route:30
-        advanced_nav_route_area_description:75
-        advanced_nav_route_altitude_description:40
-        aircraft_allowed_limitations_description:35
-        effective_hours_gmt_description_1:15
-        effective_hours_gmt_description_2:15
-        effective_hours_gmt_description_3:15
-        route_direction_limitations_description:20
-        ',
-        'ANR2' => '
-        record_type_indicator:4
-        origin_facility_location_identifier:5
-        destination_facility_location_identifier:5
-        type_of_route_code_anr:3
-        route_identifier_sequence_number_1_99:2
-        segment_sequence_number_within_the_route:3
-        segment_identifier_navaid_ident_awy_number_fix_name_sid_name_st:15
-        segment_type_described:7
-        fix_state_code_post_office_alpha_code:2
-        icao_region_code_for_fix:2
-        navaid_facility_type_code:2
-        navaid_facility_type_described:20 
-        radial_and_distance_from_navaid:7 
-        blank:187 
-    ',
-    },
+#     ANR => {
+#         'ANR1' => '
+#         record_type_indicator:4
+#         origin_facility_location_identifier:5
+#         destination_facility_location_identifier:5
+#         type_of_route_code_anr:3
+#         route_identifier_sequence_number_1_99:2
+#         type_of_route_description_advanced_nav_route:30
+#         advanced_nav_route_area_description:75
+#         advanced_nav_route_altitude_description:40
+#         aircraft_allowed_limitations_description:35
+#         effective_hours_gmt_description_1:15
+#         effective_hours_gmt_description_2:15
+#         effective_hours_gmt_description_3:15
+#         route_direction_limitations_description:20
+#         ',
+#         'ANR2' => '
+#         record_type_indicator:4
+#         origin_facility_location_identifier:5
+#         destination_facility_location_identifier:5
+#         type_of_route_code_anr:3
+#         route_identifier_sequence_number_1_99:2
+#         segment_sequence_number_within_the_route:3
+#         segment_identifier_navaid_ident_awy_number_fix_name_sid_name_st:15
+#         segment_type_described:7
+#         fix_state_code_post_office_alpha_code:2
+#         icao_region_code_for_fix:2
+#         navaid_facility_type_code:2
+#         navaid_facility_type_described:20 
+#         radial_and_distance_from_navaid:7 
+#         blank:187 
+#     ',
+#     },
     APT => {
         'ATT' => '
     record_type_indicator:3
@@ -513,6 +514,7 @@ my %hash_of_parsers = (
     point_to_point_minimum_enroute_direction:7
     point_to_point_minimum_enroute_altitude_opposite_direction:5
     point_to_point_minimum_enroute_direction_opposite_direction:7
+    minimum_crossing_altitude_mca_point:50
     record_sort_sequence_number:7
     ',
         'ATS2' => '
@@ -532,7 +534,7 @@ my %hash_of_parsers = (
     fix_minimum_reception_altitude_mra:5
     navaid_identifier:4
     reserved_from_point_part95:57
-    blanks:67
+    blanks:117
     record_sort_sequence_number:7
     ',
         'ATS3' => '
@@ -547,7 +549,7 @@ my %hash_of_parsers = (
     navaid_facility_state_p_o_code:2
     navaid_facility_latitude:14
     navaid_facility_longitude:14
-    blanks:160
+    blanks:210
     record_sort_sequence_number:7
     ',
         'ATS4' => '
@@ -558,7 +560,7 @@ my %hash_of_parsers = (
     ats_airway_type:1
     airway_point_sequence_number:5
     remarks_text:200
-    blanks:45
+    blanks:95
     record_sort_sequence_number:7
     ',
         'ATS5' => '
@@ -569,7 +571,7 @@ my %hash_of_parsers = (
     airway_type:1
     airway_point_sequence_number:5
     remarks_text:200
-    blanks:45
+    blanks:95
     record_sort_sequence_number:7
     ',
         'RMK' => '
@@ -581,7 +583,7 @@ my %hash_of_parsers = (
     remark_sequence_number:3
     remark_reference:5
     remarks_text:200
-    blanks:42
+    blanks:92
     record_sort_sequence_number:7
     ',
     },
@@ -651,6 +653,7 @@ my %hash_of_parsers = (
     point_to_point_minimum_enroute_direction:6
     point_to_point_minimum_enroute_altitude_opposite_direction:5
     point_to_point_minimum_enroute_direction_opposite_direction:6
+    minimum_crossing_altitude_mca_point:40
     record_sort_sequence_number:7
     ',
         'AWY2' => '
@@ -668,7 +671,7 @@ my %hash_of_parsers = (
     fix_minimum_reception_altitude_mra:5
     navaid_identifier:4
     reserved_from_point_part95:40
-    blanks:79
+    blanks:119
     record_sort_sequence_number:7
     ',
         'AWY3' => '
@@ -681,7 +684,7 @@ my %hash_of_parsers = (
     navaid_facility_state_p_o_code:2
     navaid_facility_latitude:14
     navaid_facility_longitude:14
-    blanks:145
+    blanks:185
     record_sort_sequence_number:7
     ',
         'AWY4' => '
@@ -690,7 +693,7 @@ my %hash_of_parsers = (
     airway_type:1
     airway_point_sequence_number:5
     remarks_text:202
-    blanks:22
+    blanks:62
     record_sort_sequence_number:7
     ',
         'AWY5' => '
@@ -699,7 +702,7 @@ my %hash_of_parsers = (
     airway_type:1
     airway_point_sequence_number:5
     remarks_text:202
-    blanks:22
+    blanks:62
     record_sort_sequence_number:7
     ',
         'RMK' => '
@@ -709,6 +712,7 @@ my %hash_of_parsers = (
     remark_sequence_number:3
     remark_reference:6
     remarks_text:220
+    blanks:40
     record_sort_sequence_number:7
     ',
     },
@@ -1741,8 +1745,10 @@ my %hash_of_parsers = (
         blank21:1
         julian_date:7
         blank22:1
-        datchk_code:6
         '
+        #Daily DOF doesn't use the datchk code, uncomment if using the periodic data
+        #datchk_code:6
+        #'
     }
 );
 
@@ -1851,7 +1857,6 @@ my %hash_of_normalizers = (
     # },
 );
 
-say "Update ATS and AWY records for 9/18 format changes";
 
 #connect to the database
 my $dbfile = "./56day.db";
@@ -1882,7 +1887,7 @@ foreach my $key ( sort keys %hash_of_parsers ) {
     my $baseFile = $key;
 
     my $file;
-    open $file, '<', $datafile or die $!;
+    open $file, '<', $datafile or die "Could not open $datafile: $!";
 
     #I'm trying a couple of different ways of looping through files
     #Read the entire file to an array
@@ -1899,7 +1904,7 @@ foreach my $key ( sort keys %hash_of_parsers ) {
         # /AFF|APT|ARB|ATS|AWOS|AWY|COM|FIX|FSS|HARFIX|HPF|ILS|LID|MTR|NATFIX|NAV|OBSTACLE|PFR|PJA|SSD|STARDP|TWR|WXL/
       # );
 
-    # next unless ($key =~ /APT/);
+#     next unless ($key =~ /OBSTACLE/);
     
     #Open an SQL transaction
     $dbh->begin_work();
@@ -1981,9 +1986,9 @@ foreach my $key ( sort keys %hash_of_parsers ) {
           Parse::FixedLength->new( [@parserArray], \%parameters );
 
         #Check for mismatch between expected and actual lengths
-        die "Line # $currentLineNumber - Bad parse for $recordType! Expected "
+        die "Line # $currentLineNumber - Bad parse for $recordType: Expected "
           . $parser_specific->length
-          . " but read "
+          . " characters but read "
           . length($textOfCurrentLine) . "\n"
           unless $parser_specific->length == length($textOfCurrentLine);
 
