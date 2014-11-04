@@ -8,7 +8,7 @@ IFS="`printf '\n\t'`"  # Always put this in Bourne shell scripts
 #56dayUrl = https://nfdc.faa.gov/webContent/56DaySub/56DySubscription_July_24__2014_-_September_18__2014.zip
 
 #Where the 56 day data is unzipped to
-datadir=./56DySubscription_September_18__2014_-_November_13__2014/
+datadir=./56DySubscription_November_13__2014_-_January_08__2015/
 
 #Where to save files we create
 outputdir=.
@@ -48,7 +48,7 @@ set -e
 ./parseAll.pl -g -e $datadir
 
 #add indexes
-#TBD
+sqlite3 $outputdir/56day.db < addIndexes.sql
 
 cp ./56day.db $outputdir/spatial56day.db
 
