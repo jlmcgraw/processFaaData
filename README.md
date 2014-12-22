@@ -16,6 +16,7 @@ How to get this utility up and running:
 
 	Install the following external programs
 		sqlite3 	(sudo apt-get install sqlite3)
+		spatialite	(sudo apt-get install libspatialite-dev spatialite-bin)
 
 	Install the following CPAN modules
 		DBI 		(sudo apt-get install libdbi-perl)

@@ -8,7 +8,7 @@ IFS="`printf '\n\t'`"  # Always put this in Bourne shell scripts
 #56dayUrl = https://nfdc.faa.gov/webContent/56DaySub/56DySubscription_July_24__2014_-_September_18__2014.zip
 
 #Where the 56 day data is unzipped to
-datadir=./56DySubscription_November_13__2014_-_January_08__2015/
+datadir=./56DySubscription_January_08__2015_-_March_05__2015/
 
 #Where to save files we create
 outputdir=.
@@ -37,19 +37,24 @@ rm ./DAILY_DOF.ZIP ./DOF.DAT
 set -e
 
 #get the daily obstacle file
-  wget http://tod.faa.gov/tod/DAILY_DOF.ZIP
-  unzip DAILY_DOF.ZIP
+echo "Download and process daily obstacle file"
+wget http://tod.faa.gov/tod/DAILY_DOF.ZIP
+unzip DAILY_DOF.ZIP
 
 #remove the header lines from obstacle file and put output in $datadir as "OBSTACLE.txt"
-  sed '1,4d' ./DOF.DAT > $datadir/OBSTACLE.txt
+sed '1,4d' ./DOF.DAT > $datadir/OBSTACLE.txt
 
 
+echo "Create the database"
 #create the new sqlite database
+#Create geometry and expand text
 ./parseAll.pl -g -e $datadir
 
+echo "Adding indexes"
 #add indexes
 sqlite3 $outputdir/56day.db < addIndexes.sql
 
+echo "Create the spatialite version of database"
 cp ./56day.db $outputdir/spatial56day.db
 
 #convert the copy to spatialite
@@ -68,4 +73,6 @@ if [ -e $outputdir/$dbfile ]; then (rm $outputdir/$dbfile) fi
 
 find $controlledairspace -name "*.shp" -type f -print -exec ogr2ogr -f SQLite $outputdir/$dbfile {} -explodecollections -update -append -dsco SPATIALITE=YES -skipfailures -lco SPATIAL_INDEX=YES -lco LAUNDER=NO --config OGR_SQLITE_SYNCHRONOUS OFF --config OGR_SQLITE_CACHE 128 -gt 65536 \;
 
-
+echo Copy updated databases to projects that use them
+cp ./56day.db ../geoReferencePlates
+cp ./spatial56day.db ../aviationMap
