@@ -27,7 +27,7 @@ JOIN
       awy1.airway_designation = awy2a.airway_designation      
       
 WHERE
-        awy1.airway_designation = 'J1'
+        awy1.airway_designation = 'V38'
 ORDER BY
   awy1.airway_point_sequence_number
 ;

@@ -8,7 +8,7 @@ IFS="`printf '\n\t'`"  # Always put this in Bourne shell scripts
 #56dayUrl = https://nfdc.faa.gov/webContent/56DaySub/56DySubscription_July_24__2014_-_September_18__2014.zip
 
 #Where the 56 day data is unzipped to
-datadir=./56DySubscription_January_08__2015_-_March_05__2015/
+datadir=./56DySubscription_March_05__2015_-_April_30__2015/
 
 #Where to save files we create
 outputdir=.

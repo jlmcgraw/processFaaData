@@ -119,7 +119,8 @@ my %hash_of_parsers = (
     site_latitude_seconds:11
     site_longitude_formatted:14
     site_longitude_seconds:11
-    blank:29
+    icao_artcc_id:4
+    blank:25
     ',
         'AFF2' => '
     record_type_indicator:4
@@ -2046,13 +2047,15 @@ foreach my $key ( sort keys %hash_of_parsers ) {
 
             #Makes a "CREATE TABLE" statement based on the keys of the hash, columns sorted alphabetically
             #Include the master_record_row_id as an explicit foreign key to master record
+            #The inclusion of " NONE" here is  to force sqlite to not assign affinity to columns, since that is making it "TEXT" by default
             my $createStmt =
                 'CREATE TABLE '
               . $baseFile . "_"
               . $recordType
               . '(_id INTEGER PRIMARY KEY AUTOINCREMENT,'
               . 'master_record_row_id INTEGER,'
-              . join( ',', sort { lc $a cmp lc $b } keys $data2 ) . ')';
+                  . join( ' NONE,', sort { lc $a cmp lc $b } keys %$data2 ) 
+              . ' NONE)';
 
             # Create the table
             $dbh->do($createStmt);
@@ -2070,16 +2073,20 @@ foreach my $key ( sort keys %hash_of_parsers ) {
         #Include the master_record_row_id as an explicit foreign key to master record
         my $insertStmt =
             'INSERT INTO '
-          . $baseFile . "_"
-          . $recordType . '('
+          . $baseFile 
+          . "_"
+          . $recordType 
+          . '('
           . 'master_record_row_id,'
           . join( ',', keys $data2 )
           . ') VALUES ('
-          . $master_record_row_id . ','
-          . join( ',', ('?') x keys $data2 ) . ')';
+          . $master_record_row_id 
+          . ','
+          . join( ',', ('?') x keys $data2 ) 
+          . ')';
 
         #Insert the values into the database
-        my $sth = $dbh->prepare($insertStmt);
+        my $sth = $dbh->prepare($insertStmt); 
         $sth->execute( values $data2 );
         
         #If we just inserted a master record 

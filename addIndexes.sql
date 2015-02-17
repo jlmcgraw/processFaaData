@@ -2,6 +2,10 @@ DROP INDEX IF EXISTS airports_location_index;
 CREATE INDEX airports_location_index
 	on APT_APT (apt_latitude, apt_longitude); 
 
+DROP INDEX IF EXISTS airports_identifier_index;
+CREATE INDEX airports_identifier_index
+	on APT_APT (location_identifier); 
+	
 DROP INDEX IF EXISTS  navaids_location_index;
 CREATE INDEX navaids_location_index
 	on nav_nav1 (latitude, longitude); 
