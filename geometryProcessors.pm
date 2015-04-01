@@ -350,9 +350,9 @@ sub geometry_MTR_MTR5 {
 
     #Calculate the decimal representation of lon/lat
         $hashRef->{latitude} =
-      &coordinatetodecimal( $hashRef->{latitude_location_of_point}, );
+      &coordinateToDecimal3( $hashRef->{latitude_location_of_point}, );
    $hashRef->{longitude} =
-      &coordinatetodecimal( $hashRef->{longitude_location_of_point} );
+      &coordinateToDecimal3( $hashRef->{longitude_location_of_point} );
       
 }
 

@@ -28,7 +28,7 @@ use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 $VERSION = 1.00;
 @ISA     = qw(Exporter);
 @EXPORT =
-  qw(trim rtrim ltrim coordinatetodecimal coordinatetodecimal2 is_vhf coordinateToDecimalCifpFormat);
+  qw(trim rtrim ltrim coordinatetodecimal coordinatetodecimal2 coordinateToDecimal3 is_vhf coordinateToDecimalCifpFormat);
 
 #@EXPORT_OK   = qw(rtrim ltrim coordinatetodecimal);
 
@@ -191,6 +191,55 @@ sub coordinatetodecimal2 {
 
     }
     return ($signedDegrees);
+}
+
+sub coordinateToDecimal3 {
+    #Deal with coordinates with or without decimals
+    #"36-04-00N"
+    #Validate and set input parameters to this function
+    my ($coordinate) = validate_pos( @_, { type => SCALAR } );
+   
+    my ( $deg, $min, $sec, $declination ) = $coordinate =~ m/^ \s* (\d+) - (\d+) - ([\d.]+) ([NESW]) \s* $/ix;
+
+    my $signeddegrees;
+    
+    #Just die if all of our parameters aren't defined
+    unless ($deg && $min && $sec && $declination) {
+    die "Error converting coordinate to decimal in coordinateToDecimal3";
+    return 0;
+    }
+    say "Deg: $deg, Min:$min, Sec:$sec, Decl:$declination" if $main::debug;
+    
+    #Convert to decimal
+    $deg = $deg / 1; 
+    $min = $min / 60;
+    $sec = $sec / 3600;
+
+    $signeddegrees = ( $deg + $min + $sec );
+
+    #South and West declinations are negative
+    if ( ( $declination eq "S" ) || ( $declination eq "W" ) ) {
+        $signeddegrees = -($signeddegrees);
+    }
+
+    given ($declination) {
+        when (/NS/) {
+
+            #Latitude is invalid if less than -90  or greater than 90
+            $signeddegrees = "0" if ( abs($signeddegrees) > 90 );
+        }
+        when (/EW/) {
+
+            #Longitude is invalid if less than -180 or greater than 180
+            $signeddegrees = "0" if ( abs($signeddegrees) > 180 );
+        }
+        default {
+        }
+
+    }
+    say "Coordinate: $coordinate to $signeddegrees" if $main::debug;
+    say "Deg: $deg, Min:$min, Sec:$sec, Decl:$declination" if $main::debug;
+    return ($signeddegrees);
 }
 
 sub coordinateToDecimalCifpFormat {
