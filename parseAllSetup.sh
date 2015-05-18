@@ -4,12 +4,12 @@ IFS="`printf '\n\t'`"  # Always put this in Bourne shell scripts
 
 
 #Input and output directories
-nasr56dayUrl=https://nfdc.faa.gov/webContent/56DaySub/56DySubscription_March_05__2015_-_April_30__2015.zip
+nasr56dayUrl=https://nfdc.faa.gov/webContent/56DaySub/56DySubscription_April_30__2015_-_June_25__2015.zip
 
-# wget --timestamping $nasr56dayUrl
+wget --timestamping $nasr56dayUrl
 
 #Where the 56 day data is unzipped to
-datadir=./56DySubscription_March_05__2015_-_April_30__2015/
+datadir=./56DySubscription_April_30__2015_-_June_25__2015/
 
 #Where to save files we create
 outputdir=.
@@ -38,7 +38,7 @@ rm ./DAILY_DOF.ZIP ./DOF.DAT
 set -e
 
 #get the daily obstacle file
-echo "Download and process daily obstacle file"
+echo "---------- Download and process daily obstacle file"
 wget --timestamping http://tod.faa.gov/tod/DAILY_DOF.ZIP
 unzip DAILY_DOF.ZIP
 
@@ -46,54 +46,61 @@ unzip DAILY_DOF.ZIP
 sed '1,4d' ./DOF.DAT > $datadir/OBSTACLE.txt
 
 
-echo "Create the database"
+echo "---------- Create the database"
 #create the new sqlite database
 #Create geometry and expand text
 ./parseAll.pl -g -e $datadir
 
-echo "Adding indexes"
+echo "---------- Adding indexes"
 #add indexes
 sqlite3 $outputdir/56day.db < addIndexes.sql
 
-echo "Create the spatialite version of database"
+echo "---------- Create the spatialite version of database"
 cp ./56day.db $outputdir/spatial56day.db
 
 #convert the copy to spatialite
+set +e
 sqlite3 $outputdir/spatial56day.db < sqliteToSpatialite.sql
+set -e
 
 #Lump the airspaces into spatialite databases
-echo "#Convert controlled and special use airspaces into spatialite databases"
+echo "---------- Convert controlled and special use airspaces into spatialite databases"
 
-# #Given a trunk build of gdal 2.0 from https://github.com/OSGeo/gdal
-# #You can convert the .xml files into other vector formats
-# #GML related environment variables
-# export GML_FETCH_ALL_GEOMETRIES=YES
-# export GML_SKIP_RESOLVE_ELEMS=NONE
-# 
-# dbfile=SpecialUseAirspace.sqlite
-# if [ -e $outputdir/$dbfile ]; then (rm $outputdir/$dbfile) fi
-# find $sua \
-#   -name "*.xml" \
-#   -type f \
-#   -print \
-#   -exec ogr2ogr \
-#     -f SQLite \
-#     $outputdir/$dbfile \
-#     {} \
-#     -explodecollections \
-#     -a_srs WGS84 \
-#     -update \
-#     -append \
-#     -wrapdateline \
-#     -fieldTypeToString ALL \
-#     -dsco SPATIALITE=YES \
-#     -skipfailures \
-#     -lco LAUNDER=NO \
-#     --config OGR_SQLITE_SYNCHRONOUS OFF \
-#     --config OGR_SQLITE_CACHE 128 \
-#     -gt 65536 \
-#     \;
+#Given a version of gdal >= 2.0 you can convert the AIXM .xml files into other vector formats
+#(try a trunk build https://github.com/OSGeo/gdal)
 
+#Edit this to point to where you cloned the GDAL repository to
+export GDAL_DATA="/home/jlmcgraw/Documents/github/gdal/gdal/data/"
+#GML related environment variables for the conversion
+export GML_FETCH_ALL_GEOMETRIES=YES
+export GML_SKIP_RESOLVE_ELEMS=NONE
+
+
+dbfile=SpecialUseAirspace.sqlite
+if [ -e $outputdir/$dbfile ]; then (rm $outputdir/$dbfile) fi
+find $sua \
+  -name "*.xml" \
+  -type f \
+  -print \
+  -exec ogr2ogr \
+    -f SQLite \
+    $outputdir/$dbfile \
+    {} \
+    -explodecollections \
+    -a_srs WGS84 \
+    -update \
+    -append \
+    -wrapdateline \
+    -fieldTypeToString ALL \
+    -dsco SPATIALITE=YES \
+    -skipfailures \
+    -lco LAUNDER=NO \
+    --config OGR_SQLITE_SYNCHRONOUS OFF \
+    --config OGR_SQLITE_CACHE 128 \
+    -gt 65536 \
+    \;
+
+    
 dbfile=ControlledAirspace.sqlite
 if [ -e $outputdir/$dbfile ]; then (rm $outputdir/$dbfile) fi
 
@@ -116,7 +123,3 @@ find $controlledairspace \
   --config OGR_SQLITE_CACHE 128 \
   -gt 65536 \
   \;
-
-echo Copy updated databases to projects that use them
-cp ./56day.db ../geoReferencePlates
-cp ./spatial56day.db ../aviationMap

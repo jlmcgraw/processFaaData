@@ -204,7 +204,8 @@ sub coordinateToDecimal3 {
     my $signeddegrees;
     
     #Just die if all of our parameters aren't defined
-    unless ($deg && $min && $sec && $declination) {
+    unless (defined $deg && defined $min && defined $sec && defined $declination) {
+    say "Deg: $deg, Min:$min, Sec:$sec, Decl:$declination";
     die "Error converting coordinate to decimal in coordinateToDecimal3";
     return 0;
     }
