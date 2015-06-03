@@ -3,13 +3,17 @@ set -eu                # Always put this in Bourne shell scripts
 IFS="`printf '\n\t'`"  # Always put this in Bourne shell scripts
 
 
-#Input and output directories
-nasr56dayUrl=https://nfdc.faa.gov/webContent/56DaySub/56DySubscription_April_30__2015_-_June_25__2015.zip
+nasr56dayBaseUrl=https://nfdc.faa.gov/webContent/56DaySub
+nasr56dayFileName=56DySubscription_June_25__2015_-_August_20__2015.zip
 
-wget --timestamping $nasr56dayUrl
+#get current datafile
+wget --timestamping $nasr56dayBaseUrl/$nasr56dayFileName
 
 #Where the 56 day data is unzipped to
-datadir=./56DySubscription_April_30__2015_-_June_25__2015/
+datadir=$(basename $nasr56dayFileName .zip)
+
+#recursizely unzip to datadir
+./recursiveUnzip.sh $nasr56dayFileName
 
 #Where to save files we create
 outputdir=.
@@ -27,8 +31,7 @@ if [ ! -d "$controlledairspace" ]; 	then
 	exit 1
  	fi
 
-#get current datafile
-#unzip to datadir
+
 
 #delete any existing files
 set +e
@@ -66,39 +69,39 @@ set -e
 #Lump the airspaces into spatialite databases
 echo "---------- Convert controlled and special use airspaces into spatialite databases"
 
-#Given a version of gdal >= 2.0 you can convert the AIXM .xml files into other vector formats
-#(try a trunk build https://github.com/OSGeo/gdal)
-
-#Edit this to point to where you cloned the GDAL repository to
-export GDAL_DATA="/home/jlmcgraw/Documents/github/gdal/gdal/data/"
-#GML related environment variables for the conversion
-export GML_FETCH_ALL_GEOMETRIES=YES
-export GML_SKIP_RESOLVE_ELEMS=NONE
-
-
-dbfile=SpecialUseAirspace.sqlite
-if [ -e $outputdir/$dbfile ]; then (rm $outputdir/$dbfile) fi
-find $sua \
-  -name "*.xml" \
-  -type f \
-  -print \
-  -exec ogr2ogr \
-    -f SQLite \
-    $outputdir/$dbfile \
-    {} \
-    -explodecollections \
-    -a_srs WGS84 \
-    -update \
-    -append \
-    -wrapdateline \
-    -fieldTypeToString ALL \
-    -dsco SPATIALITE=YES \
-    -skipfailures \
-    -lco LAUNDER=NO \
-    --config OGR_SQLITE_SYNCHRONOUS OFF \
-    --config OGR_SQLITE_CACHE 128 \
-    -gt 65536 \
-    \;
+# #Given a version of gdal >= 2.0 you can convert the AIXM .xml files into other vector formats
+# #(try a trunk build https://github.com/OSGeo/gdal)
+# 
+# #Edit this to point to where you cloned the GDAL repository to
+# export GDAL_DATA="/home/jlmcgraw/Documents/github/gdal/gdal/data/"
+# #GML related environment variables for the conversion
+# export GML_FETCH_ALL_GEOMETRIES=YES
+# export GML_SKIP_RESOLVE_ELEMS=NONE
+# 
+# 
+# dbfile=SpecialUseAirspace.sqlite
+# if [ -e $outputdir/$dbfile ]; then (rm $outputdir/$dbfile) fi
+# find $sua \
+#   -name "*.xml" \
+#   -type f \
+#   -print \
+#   -exec ogr2ogr \
+#     -f SQLite \
+#     $outputdir/$dbfile \
+#     {} \
+#     -explodecollections \
+#     -a_srs WGS84 \
+#     -update \
+#     -append \
+#     -wrapdateline \
+#     -fieldTypeToString ALL \
+#     -dsco SPATIALITE=YES \
+#     -skipfailures \
+#     -lco LAUNDER=NO \
+#     --config OGR_SQLITE_SYNCHRONOUS OFF \
+#     --config OGR_SQLITE_CACHE 128 \
+#     -gt 65536 \
+#     \;
 
     
 dbfile=ControlledAirspace.sqlite
