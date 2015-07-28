@@ -1,7 +1,8 @@
 #!/bin/bash
 set -eu                # Always put this in Bourne shell scripts
 IFS=$(printf '\n\t')  # Always put this in Bourne shell scripts
-
+#Recursively extract archives
+#Yes, there are plenty of utilities that do this already (dtrx, for example)
 #Modified from original version at http://www.dbforums.com/showthread.php?1619154-how-to-unzip-files-recursively
 #Other bits from http://tuxtweaks.com/2014/05/bash-getopts/
 
@@ -47,6 +48,8 @@ function runzip()
 
         #Destination subdirectory named after file under its directory
         #removing the .zip suffix
+        #full_path=$(readlink -f "${zip_file}")
+        
         zip_dir=$(dirname "${zip_file}")/$(basename "${zip_file}" .zip)
 
 
@@ -92,8 +95,27 @@ function runzip()
                         unzip_error_code=$?
                         break
                     fi
-            done < <(find "${zip_dir}" -type f -name '*.zip' -print)
 
+            done < <(find \
+                        "${zip_dir}" \
+                        -type f \
+                            \(  \
+                            -iname '*.tar.bz2' \
+                            -o -iname '*.tar.gz' \
+                            -o -iname '*.bz2' \
+                            -o -iname '*.gz' \
+                            -o -iname '*.xz' \
+                            -o -iname '*.tar' \
+                            -o -iname '*.tbz2' \
+                            -o -iname '*.tgz' \
+                            -o -iname '*.txz' \
+                            -o -iname '*.zip' \
+                            -o -iname '*.Z' \
+                            -o -iname '*.rar' \
+                            -o -iname '*.jar' \
+                            \) \
+                        -print)
+    
         #
         # Remove zip file if required
         #
@@ -109,6 +131,49 @@ function runzip()
 
         return 0
     }
+
+# JLM: I copied this from http://askubuntu.com/questions/338758/how-to-quickly-extract-all-kinds-of-archived-files-from-command-line
+# I found the following function at http://unix.stackexchange.com/a/168/37944
+# which I improved it a little. Many thanks to sydo for this idea.
+extract () {
+    for arg in $@ ; do
+        if [ -f $arg ] ; then
+            case $arg in
+                *.tar.bz2)  tar xjf $arg      ;;
+                #*.tar.bz2)  tar xjf $arg --directory $directory     ;;
+                *.tar.gz)   tar xzf $arg      ;;
+                #*.tar.gz)   tar xzf $arg --directory $directory      ;;
+                *.tar.xz)   tar --xz -xvf $arg      ;;
+                #*.tar.xz)   tar --xz -xvf $arg --directory $directory        ;;
+                *.bz2)      bunzip2 $arg      ;;
+                #*.bz2)     tar xjf $arg --directory $directory     ;;
+                *.gz)       gunzip $arg       ;;
+                #*.gz)       tar xzf $arg --directory $directory        ;;
+                *.xz)       xz -d $arg       ;;
+                #*.xz)       xz -d $arg       ;;
+                *.tar)      tar xf $arg       ;;
+                #*.tar)      tar xf $arg  --directory $directory      ;;
+                *.tbz2)     tar xjf $arg      ;;
+                #*.tbz2)     tar xjf $arg  --directory $directory     ;;
+                *.tgz)      tar xzf $arg      ;;
+                #*.tgz)      tar xzf $arg  --directory $directory     ;;
+                *.txz)      tar Jxvf $arg      ;;
+                #*.txz)      tar Jxvf $arg  --directory $directory     ;;
+                *.zip)      unzip $arg        ;;
+                #*.zip)      unzip $arg -d $directory       ;;
+                *.Z)        uncompress $arg   ;;
+                #*.Z)        TODO uncompress $arg   ;;
+                *.rar)      rar x $arg        ;;  # 'rar' must to be installed
+                #*.rar)      TODO rar x $arg        ;;  # 'rar' must to be installed
+                *.jar)      jar -xvf $arg     ;;  # 'jdk' must to be installed
+                #*.jar)      TODO jar -xvf $arg     ;;  # 'jdk' must to be installed
+                *)          echo "'$arg' cannot be extracted via extract()" ;;
+            esac
+        else
+            echo "'$arg' is not a valid file"
+        fi
+    done
+}
 
 
 #Set Script Name variable

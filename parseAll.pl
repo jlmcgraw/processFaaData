@@ -1884,6 +1884,7 @@ foreach my $key ( sort keys %hash_of_parsers ) {
 
     #Open appropriate data file in the target directory
     my ( $filename, $dir, $ext ) = fileparse( $targetdir, qr/\.[^.]*/ );
+    
     my $datafile = "$dir" . "$key.txt";
     my $baseFile = $key;
 
@@ -1995,6 +1996,7 @@ foreach my $key ( sort keys %hash_of_parsers ) {
 
         #Parse with specific parser
         my $data2 = $parser_specific->parse_newref($textOfCurrentLine);
+
 
         #Normalize data, will create new tables
         if ( exists $hash_of_normalizers{$baseFile}{$recordType} ) {

@@ -1,16 +1,18 @@
 #!/bin/bash
 set -eu                # Always put this in Bourne shell scripts
-IFS="`printf '\n\t'`"  # Always put this in Bourne shell scripts
+IFS=$(printf '\n\t')  # Always put this in Bourne shell scripts
 
 
 nasr56dayBaseUrl=https://nfdc.faa.gov/webContent/56DaySub
-nasr56dayFileName=56DySubscription_June_25__2015_-_August_20__2015.zip
+nasr56dayFileName=56DySubscription_August_20__2015_-_October_15__2015.zip
 
 #get current datafile
 wget --timestamping $nasr56dayBaseUrl/$nasr56dayFileName
 
 #Where the 56 day data is unzipped to
 datadir=$(basename $nasr56dayFileName .zip)
+#Ensure trailing /
+datadir+="/"
 
 #recursizely unzip to datadir
 ./recursiveUnzip.sh $nasr56dayFileName
