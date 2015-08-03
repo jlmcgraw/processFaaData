@@ -153,10 +153,10 @@ sub coordinatetodecimal2 {
 
     my $signedDegrees;
 
-    if ( ! $declination =~ /[NSEW]/ ) {
+    if ( !$declination =~ /[NSEW]/ ) {
         say "Bad declination parameter: $declination";
-        return 0; 
-        }
+        return 0;
+    }
 
     $deg = $deg / 1;
 
@@ -174,17 +174,18 @@ sub coordinatetodecimal2 {
         when (/N|S/) {
 
             #Latitude is invalid if less than -90  or greater than 90
-            if ( abs($signedDegrees) > 90 ){
+            if ( abs($signedDegrees) > 90 ) {
                 say "$signedDegrees is out of valid range for latitude";
-                $signedDegrees = 0; }
+                $signedDegrees = 0;
+            }
         }
         when (/E|W/) {
 
             #Longitude is invalid if less than -180 or greater than 180
-            if ( abs($signedDegrees) > 180 ){
-            say "$signedDegrees is out of valid range for longitude";
-           $signedDegrees = 0  ;
-           }
+            if ( abs($signedDegrees) > 180 ) {
+                say "$signedDegrees is out of valid range for longitude";
+                $signedDegrees = 0;
+            }
         }
         default {
         }
@@ -194,25 +195,31 @@ sub coordinatetodecimal2 {
 }
 
 sub coordinateToDecimal3 {
+
     #Deal with coordinates with or without decimals
     #"36-04-00N"
     #Validate and set input parameters to this function
     my ($coordinate) = validate_pos( @_, { type => SCALAR } );
-   
-    my ( $deg, $min, $sec, $declination ) = $coordinate =~ m/^ \s* (\d+) - (\d+) - ([\d.]+) ([NESW]) \s* $/ix;
+
+    my ( $deg, $min, $sec, $declination ) =
+      $coordinate =~ m/^ \s* (\d+) - (\d+) - ([\d.]+) ([NESW]) \s* $/ix;
 
     my $signeddegrees;
-    
+
     #Just die if all of our parameters aren't defined
-    unless (defined $deg && defined $min && defined $sec && defined $declination) {
-    say "Deg: $deg, Min:$min, Sec:$sec, Decl:$declination";
-    die "Error converting coordinate to decimal in coordinateToDecimal3";
-    return 0;
+    unless ( defined $deg
+        && defined $min
+        && defined $sec
+        && defined $declination )
+    {
+        say "Deg: $deg, Min:$min, Sec:$sec, Decl:$declination";
+        die "Error converting coordinate to decimal in coordinateToDecimal3";
+        return 0;
     }
     say "Deg: $deg, Min:$min, Sec:$sec, Decl:$declination" if $main::debug;
-    
+
     #Convert to decimal
-    $deg = $deg / 1; 
+    $deg = $deg / 1;
     $min = $min / 60;
     $sec = $sec / 3600;
 
@@ -238,7 +245,7 @@ sub coordinateToDecimal3 {
         }
 
     }
-    say "Coordinate: $coordinate to $signeddegrees" if $main::debug;
+    say "Coordinate: $coordinate to $signeddegrees"        if $main::debug;
     say "Deg: $deg, Min:$min, Sec:$sec, Decl:$declination" if $main::debug;
     return ($signeddegrees);
 }

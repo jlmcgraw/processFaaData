@@ -6,8 +6,8 @@ IFS=$(printf '\n\t')  # Always put this in Bourne shell scripts
 nasr56dayBaseUrl=https://nfdc.faa.gov/webContent/56DaySub
 nasr56dayFileName=56DySubscription_August_20__2015_-_October_15__2015.zip
 
-#get current datafile
-wget --timestamping $nasr56dayBaseUrl/$nasr56dayFileName
+# #get current datafile
+# wget --timestamping $nasr56dayBaseUrl/$nasr56dayFileName
 
 #Where the 56 day data is unzipped to
 datadir=$(basename $nasr56dayFileName .zip)
@@ -54,7 +54,7 @@ sed '1,4d' ./DOF.DAT > $datadir/OBSTACLE.txt
 echo "---------- Create the database"
 #create the new sqlite database
 #Create geometry and expand text
-./parseAll.pl -g -e $datadir
+./parseNasr.pl -g -e $datadir
 
 echo "---------- Adding indexes"
 #add indexes

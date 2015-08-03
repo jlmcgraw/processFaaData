@@ -349,11 +349,11 @@ sub geometry_MTR_MTR5 {
     my ($hashRef) = validate_pos( @_, { type => HASHREF } );
 
     #Calculate the decimal representation of lon/lat
-        $hashRef->{latitude} =
+    $hashRef->{latitude} =
       &coordinateToDecimal3( $hashRef->{latitude_location_of_point}, );
-   $hashRef->{longitude} =
+    $hashRef->{longitude} =
       &coordinateToDecimal3( $hashRef->{longitude_location_of_point} );
-      
+
 }
 
 sub geometry_NATFIX_NATFIX {
@@ -426,22 +426,22 @@ sub geometry_STARDP_STARDP {
         # say $longitude . " " . $latitude;
         # ( $deg, $min, $sec, $declination )
         my $latDeclination = substr( $latitude, 0, 1 );
-        my $latD = substr( $latitude, 1, 2 );
-        my $latM = substr( $latitude, 3, 2 );
+        my $latD           = substr( $latitude, 1, 2 );
+        my $latM           = substr( $latitude, 3, 2 );
         my $latS = substr( $latitude, 5, 2 ) . "." . substr( $latitude, 7, 1 );
 
         $latitude =
           coordinatetodecimal2( $latD, $latM, $latS, $latDeclination );
-        
+
         my $lonDeclination = substr( $longitude, 0, 1 );
-        my $lonD = substr( $longitude, 1, 3 );
-        my $lonM = substr( $longitude, 4, 2 );
+        my $lonD           = substr( $longitude, 1, 3 );
+        my $lonM           = substr( $longitude, 4, 2 );
         my $lonS =
           substr( $longitude, 6, 2 ) . "." . substr( $longitude, 8, 1 );
 
         $longitude =
           coordinatetodecimal2( $lonD, $lonM, $lonS, $lonDeclination );
-    
+
     }
 
     # 5614486N 13438533W

@@ -1,111 +1,5 @@
-#!/usr/bin/perl
-# Copyright (C) 2014  Jesse McGraw (jlmcgraw@gmail.com)
-
-# Process data provided by the FAA
-# This current just slurps all of the data into an sqlite database
-#
-# TODO
-# Link secondary and continuation records to primary records
-        # FOREIGN KEY(app_id) REFERENCES apps(id),  in create
-        # $db.execute("PRAGMA foreign_keys = ON;") in connect
-        #
-        #SELECT last_insert_rowid()
-# Expand more text
-#
-# Done
-#   Convert to spatialite
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see [http://www.gnu.org/licenses/].
-
-use 5.018;
-use strict;
-use warnings;
-
-use File::Basename;
-use Getopt::Std;
-use Parse::FixedLength;
-use Data::Dumper;
-$Data::Dumper::Sortkeys = 1;
-use DBI;
-use processFaaData;
-use File::Slurp;
-use Params::Validate qw(:all);
-
-#Subroutines to calculate geometry, called via dispatch table %hash_of_geometry_creators
-use geometryProcessors;
-
-#Subroutines to expand text, called via dispatch table %hash_of_expanders
-use textExpanders;
-
-#Subroutines to normalize tables, called via dispatch table %hash_of_normalizers
-use normalizingProcessors;
-
-
-
-use vars qw/ %opt /;
-
-my $opt_string = 'veg';
-
-my $arg_num = scalar @ARGV;
-
-unless ( getopts( "$opt_string", \%opt ) ) {
-    say "Usage: $0 -v -e <data directory>\n";
-    say "-v: enable debug output";
-    say "-e: expand text";
-    say "-g: create geometry for spatialite";
-    exit(1);
-}
-if ( $arg_num < 1 ) {
-    say "Usage: $0 -v -e <data directory>\n";
-    say "-v: enable debug output";
-    say "-e: expand text";
-    say "-g: create geometry for spatialite";
-    exit(1);
-}
-
-#Get the target data directory from command line options
-my $targetdir = $ARGV[0];
-
-my $debug                = $opt{v};
-my $shouldExpandText     = $opt{e};
-my $shouldCreateGeometry = $opt{g};
-
-my %parameters = (
-
-    # 'autonum' => 'false',
-    # 'trim'    => 'false',
-);
-
-# my %sections = (
-# 'APT' => '',
-# 'ATT' => '',
-# 'RWY' => '',
-# 'APT' => '',
-# 'ARS' => '',
-# 'RMK' => '',
-
-# );
-
-#Hash to hold whether we have already created table for this file and recordType
-my %haveCreatedTable = ();
-
-#These are parsers for each section/subsection combo we expect to find
-#This is really the meat of the whole program
-my %hash_of_parsers = (
-
-    AFF => {
-        'AFF1' => '
+AFF => {
+    'AFF1' => '
     record_type_indicator:4
     air_route_traffic_control_center_identifier:4
     air_route_traffic_control_center_name:40
@@ -122,7 +16,7 @@ my %hash_of_parsers = (
     icao_artcc_id:4
     blank:25
     ',
-        'AFF2' => '
+    'AFF2' => '
     record_type_indicator:4
     air_route_traffic_control_center_identifier:4
     site_location_location_of_the_facility_controlled_by_the_air_ro:30
@@ -131,7 +25,7 @@ my %hash_of_parsers = (
     site_remarks_text:200
     blank:7
     ',
-        'AFF3' => '
+    'AFF3' => '
     record_type_indicator:4
     air_route_traffic_control_center_identifier:4
     site_location_location_of_the_facility_controlled_by_the_air_ro:30
@@ -149,7 +43,7 @@ my %hash_of_parsers = (
     longitude_of_the_airport_formatted:14
     longitude_of_the_airport_seconds:11
     ',
-        'AFF4' => '
+    'AFF4' => '
     record_type_indicator:4
     air_route_traffic_control_center_identifier:4
     site_location_location_of_the_facility_controlled_by_the_air_ro:30
@@ -159,42 +53,43 @@ my %hash_of_parsers = (
     frequency_remarks_text:200
     blank:1
     '
-    },
-#     ANR => {
-#         'ANR1' => '
-#         record_type_indicator:4
-#         origin_facility_location_identifier:5
-#         destination_facility_location_identifier:5
-#         type_of_route_code_anr:3
-#         route_identifier_sequence_number_1_99:2
-#         type_of_route_description_advanced_nav_route:30
-#         advanced_nav_route_area_description:75
-#         advanced_nav_route_altitude_description:40
-#         aircraft_allowed_limitations_description:35
-#         effective_hours_gmt_description_1:15
-#         effective_hours_gmt_description_2:15
-#         effective_hours_gmt_description_3:15
-#         route_direction_limitations_description:20
-#         ',
-#         'ANR2' => '
-#         record_type_indicator:4
-#         origin_facility_location_identifier:5
-#         destination_facility_location_identifier:5
-#         type_of_route_code_anr:3
-#         route_identifier_sequence_number_1_99:2
-#         segment_sequence_number_within_the_route:3
-#         segment_identifier_navaid_ident_awy_number_fix_name_sid_name_st:15
-#         segment_type_described:7
-#         fix_state_code_post_office_alpha_code:2
-#         icao_region_code_for_fix:2
-#         navaid_facility_type_code:2
-#         navaid_facility_type_described:20 
-#         radial_and_distance_from_navaid:7 
-#         blank:187 
-#     ',
-#     },
-    APT => {
-        'ATT' => '
+  },
+
+  #     ANR => {
+  #         'ANR1' => '
+  #         record_type_indicator:4
+  #         origin_facility_location_identifier:5
+  #         destination_facility_location_identifier:5
+  #         type_of_route_code_anr:3
+  #         route_identifier_sequence_number_1_99:2
+  #         type_of_route_description_advanced_nav_route:30
+  #         advanced_nav_route_area_description:75
+  #         advanced_nav_route_altitude_description:40
+  #         aircraft_allowed_limitations_description:35
+  #         effective_hours_gmt_description_1:15
+  #         effective_hours_gmt_description_2:15
+  #         effective_hours_gmt_description_3:15
+  #         route_direction_limitations_description:20
+  #         ',
+  #         'ANR2' => '
+  #         record_type_indicator:4
+  #         origin_facility_location_identifier:5
+  #         destination_facility_location_identifier:5
+  #         type_of_route_code_anr:3
+  #         route_identifier_sequence_number_1_99:2
+  #         segment_sequence_number_within_the_route:3
+  #         segment_identifier_navaid_ident_awy_number_fix_name_sid_name_st:15
+  #         segment_type_described:7
+  #         fix_state_code_post_office_alpha_code:2
+  #         icao_region_code_for_fix:2
+  #         navaid_facility_type_code:2
+  #         navaid_facility_type_described:20
+  #         radial_and_distance_from_navaid:7
+  #         blank:187
+  #     ',
+  #     },
+  APT => {
+    'ATT' => '
     record_type_indicator:3
     landing_facility_site_number:11
     landing_facility_state_post_office_code:2
@@ -203,7 +98,7 @@ my %hash_of_parsers = (
     attendance_schedule_record_filler:1403
     ',
 
-        'APT' => '
+    'APT' => '
     record_type_indicator:3
     landing_facility_site_number:11
     landing_facility_type:13
@@ -309,7 +204,7 @@ my %hash_of_parsers = (
     icao_identifier:7
     airport_record_filler_blank:312
     ',
-        'RWY' => '
+    'RWY' => '
     record_type_indicator:3
     landing_facility_site_number:11
     runway_state_post_office_code:2
@@ -447,7 +342,7 @@ my %hash_of_parsers = (
     runway_record_filler_blank:388
     ',
 
-        'ARS' => '
+    'ARS' => '
     record_type_indicator:3
     landing_facility_site_number:11
     landing_facility_state_post_office_code:2
@@ -456,16 +351,16 @@ my %hash_of_parsers = (
     type_of_aircraft_arresting_device:9
     arresting_system_record_filler_blank:1494
     ',
-        'RMK' => '
+    'RMK' => '
     record_type_indicator:3
     landing_facility_site_number:11
     landing_facility_state_post_office_code:2
     remark_element_name:13
     remark_text:1500
     '
-    },
-    ARB => {
-        'ARB' => '
+  },
+  ARB => {
+    'ARB' => '
     record_identifier_artcc_identifier_altitude_structure_code_five:12
     center_name:40
     altitude_structure_decode_name:10
@@ -475,9 +370,9 @@ my %hash_of_parsers = (
     six_digit_number_used_to_maintain_proper_sequence_of_boundary_s:6
     an_x_in_this_field_indicates_this_point_is_used_only_in_the_nas:1
     '
-    },
-    ATS => {
-        'ATS1' => '
+  },
+  ATS => {
+    'ATS1' => '
     record_type_indicator:4
     ats_airway_designation:2
     ats_airway_id:12
@@ -518,7 +413,7 @@ my %hash_of_parsers = (
     minimum_crossing_altitude_mca_point:50
     record_sort_sequence_number:7
     ',
-        'ATS2' => '
+    'ATS2' => '
     record_type_indicator:4
     ats_airway_designation:2
     ats_airway_id:12
@@ -538,7 +433,7 @@ my %hash_of_parsers = (
     blanks:117
     record_sort_sequence_number:7
     ',
-        'ATS3' => '
+    'ATS3' => '
     record_type_indicator:4
     ats_airway_designation:2
     ats_airway_id:12
@@ -553,7 +448,7 @@ my %hash_of_parsers = (
     blanks:210
     record_sort_sequence_number:7
     ',
-        'ATS4' => '
+    'ATS4' => '
     record_type_indicator:4
     ats_airway_designation:2
     ats_airway_id:12
@@ -564,7 +459,7 @@ my %hash_of_parsers = (
     blanks:95
     record_sort_sequence_number:7
     ',
-        'ATS5' => '
+    'ATS5' => '
     record_type_indicator:4
     ats_airway_designation:2
     ats_airway_id:12
@@ -575,7 +470,7 @@ my %hash_of_parsers = (
     blanks:95
     record_sort_sequence_number:7
     ',
-        'RMK' => '
+    'RMK' => '
     record_type_indicator:4
     ats_airway_designation:2
     ats_airway_id:12
@@ -587,9 +482,9 @@ my %hash_of_parsers = (
     blanks:92
     record_sort_sequence_number:7
     ',
-    },
-    AWOS => {
-        'AWOS1' => '
+  },
+  AWOS => {
+    'AWOS1' => '
     record_type_indicator:5
     wx_sensor_ident:4
     wx_sensor_type:10
@@ -610,15 +505,15 @@ my %hash_of_parsers = (
     information_effective_date_mm_dd_yyyy:10
     blanks_filler:82
     ',
-        'AWOS2' => '
+    'AWOS2' => '
     record_type_indicator:5
     wx_sensor_ident:4
     wx_sensor_type:10
     asos_awos_remarks_free_form_text:236
     ',
-    },
-    AWY => {
-        'AWY1' => '
+  },
+  AWY => {
+    'AWY1' => '
     record_type_indicator:4
     airway_designation:5
     airway_type:1
@@ -657,7 +552,7 @@ my %hash_of_parsers = (
     minimum_crossing_altitude_mca_point:40
     record_sort_sequence_number:7
     ',
-        'AWY2' => '
+    'AWY2' => '
         record_type_indicator:4
     airway_designation:5
     airway_type:1
@@ -675,7 +570,7 @@ my %hash_of_parsers = (
     blanks:119
     record_sort_sequence_number:7
     ',
-        'AWY3' => '
+    'AWY3' => '
         record_type_indicator:4
     airway_designation:5
     airway_type:1
@@ -688,7 +583,7 @@ my %hash_of_parsers = (
     blanks:185
     record_sort_sequence_number:7
     ',
-        'AWY4' => '
+    'AWY4' => '
         record_type_indicator:4
     airway_designation:5
     airway_type:1
@@ -697,7 +592,7 @@ my %hash_of_parsers = (
     blanks:62
     record_sort_sequence_number:7
     ',
-        'AWY5' => '
+    'AWY5' => '
         record_type_indicator:4
     airway_designation:5
     airway_type:1
@@ -706,7 +601,7 @@ my %hash_of_parsers = (
     blanks:62
     record_sort_sequence_number:7
     ',
-        'RMK' => '
+    'RMK' => '
         record_type_indicator:4
     airway_designation:5
     airway_type:1
@@ -716,11 +611,11 @@ my %hash_of_parsers = (
     blanks:40
     record_sort_sequence_number:7
     ',
-    },
+  },
 
-    # cdr    => {},
-    COM => {
-        'COM' => '
+  # cdr    => {},
+  COM => {
+    'COM' => '
     communications_outlet_ident:4
     communications_outlet_type:7
     associated_navaid_ident:4
@@ -752,9 +647,9 @@ my %hash_of_parsers = (
     status:20
     status_date:11
     '
-    },
-    FIX => {
-        'FIX1' => '
+  },
+  FIX => {
+    'FIX1' => '
     record_type_indicator:4
     record_identifier_fix_id:30
     record_identifier_fix_state_name:30
@@ -777,7 +672,7 @@ my %hash_of_parsers = (
     sua_atcaa:1
     blanks:192
     ',
-        'FIX2' => '
+    'FIX2' => '
     record_type_indicator:4
     record_identifier_fix_name:30
     record_identifier_fix_state_name:30
@@ -785,7 +680,7 @@ my %hash_of_parsers = (
     location_identifier_facility_type_and_radial_or_bearing_dme_dis:23
     blanks:377
     ',
-        'FIX3' => '
+    'FIX3' => '
     record_type_indicator:4
     record_identifier_fix_name:30
     record_identifier_fix_state_name:30
@@ -793,7 +688,7 @@ my %hash_of_parsers = (
     ident_facility_type_direction_or_course_of_ils_co:23
     blanks:377
     ',
-        'FIX4' => '
+    'FIX4' => '
     record_type_indicator:4
     record_identifier_fix_name:30
     record_identifier_fix_state_name:30
@@ -801,7 +696,7 @@ my %hash_of_parsers = (
     field_label:100
     remark_text:300
     ',
-        'FIX5' => '
+    'FIX5' => '
     record_type_indicator:4
     record_identifier_fix_name:30
     record_identifier_fix_state_name:30
@@ -809,9 +704,9 @@ my %hash_of_parsers = (
     chart_on_which_fix_is_to_be_depicted:22
     blanks:378
     ',
-    },
-    FSS => {
-        'FSS' => '
+  },
+  FSS => {
+    'FSS' => '
         record_identifier_the_flight_service_stations_location_ident:4
     name_of_fss:26
     fss_update_date_last_date_on_which_the_record_was_updated:11
@@ -873,11 +768,11 @@ my %hash_of_parsers = (
     date_information_extracted:11
     ',
 
-        #bug todo: continuation records not implemented
-        '*' => '                     ',
-    },
-    HARFIX => {
-        'HARFIX' => '
+    #bug todo: continuation records not implemented
+    '*' => '                     ',
+  },
+  HARFIX => {
+    'HARFIX' => '
         fix_navaid_id:77
     blank_character_separating_fields1:1
     fix_navaid_latitude_format_ddmmss_ssssx:12
@@ -895,9 +790,9 @@ my %hash_of_parsers = (
     sua_atcaa_waypoint:1
     ',
 
-    },
-    HPF => {
-        'HP1' => '
+  },
+  HPF => {
+    'HP1' => '
         record_type_indicator:4
     holding_pattern_name:80
     pattern_number_to_uniquely_identify_holding_pattern:3
@@ -927,30 +822,30 @@ my %hash_of_parsers = (
     leg_length_outbound_two_subfields_separated_by_a_slash_time_min:8
     blanks:195
     ',
-        'HP2' => '
+    'HP2' => '
         record_type_indicator:4
     holding_pattern_name:80
     pattern_number_to_uniquely_identify_holding_pattern:3
     charting_description:21
     blanks:379
     ',
-        'HP3' => '
+    'HP3' => '
         record_type_indicator:4
     holding_pattern_name:80
     pattern_number_to_uniquely_identify_holding_pattern:3
     holding_altitudes_speeds_other_than_ones_shown_in_hp1_record:15
     blanks:385
     ',
-        'HP4' => '
+    'HP4' => '
         record_type_indicator:4
     holding_pattern_name:80
     pattern_number_to_uniquely_identify_holding_pattern:3
     field_label:100
     descriptive_remarks:300
     ',
-    },
-    ILS => {
-        'ILS1' => '
+  },
+  ILS => {
+    'ILS1' => '
         record_type_indicator:4
     airport_site_number_identifier:11
     ils_runway_end_identifier:3
@@ -972,7 +867,7 @@ my %hash_of_parsers = (
     the_magnetic_variation_at_the_ils_facility:3
     blank:88
     ',
-        'ILS2' => '
+    'ILS2' => '
         record_type_indicator:4
     airport_site_number_identifier:11
     ils_runway_end_identifier:3
@@ -998,7 +893,7 @@ my %hash_of_parsers = (
     localizer_services_code:2
     blank:201
     ',
-        'ILS3' => '
+    'ILS3' => '
         record_type_indicator:4
     airport_site_number_identifier:11
     ils_runway_end_identifier:3
@@ -1021,7 +916,7 @@ my %hash_of_parsers = (
     elevation_of_runway_at_point_adjacent_to_the_glide_slope_antenn:8
     blank:210
     ',
-        'ILS4' => '
+    'ILS4' => '
         record_type_indicator:4
     airport_site_number_identifier:11
     ils_runway_end_identifier:3
@@ -1042,7 +937,7 @@ my %hash_of_parsers = (
     distance_of_dme_antenna_from_stop_end_of_runway:7
     blank:234
     ',
-        'ILS5' => '
+    'ILS5' => '
         record_type_indicator:4
     airport_site_number_identifier:11
     ils_runway_end_identifier:3
@@ -1069,16 +964,16 @@ my %hash_of_parsers = (
     service_provided_by_marker:30
     blank:116
     ',
-        'ILS6' => '
+    'ILS6' => '
         record_type_indicator:4
     airport_site_number_identifier:11
     ils_runway_end_identifier:3
     ils_system_type:10
     ils_remarks_free_form_text:350
     ',
-    },
-    LID => {
-        '1' => '
+  },
+  LID => {
+    '1' => '
         identifier_group_sort_code:1
     identifier_group_code:3
     location_identifier:5
@@ -1113,7 +1008,7 @@ my %hash_of_parsers = (
     effective_date_of_this_information_mm_dd_yyyy:10
     blanks:447
     ',
-        '2' => '
+    '2' => '
         identifier_group_sort_code:1
     identifier_group_code:3
     location_identifier:5
@@ -1133,7 +1028,7 @@ my %hash_of_parsers = (
     effective_date_of_this_information_mm_dd_yyyy:10
     blanks:570
     ',
-        '3' => '
+    '3' => '
         identifier_group_sort_code:1
     identifier_group_code:3
     location_identifier:5
@@ -1168,9 +1063,9 @@ my %hash_of_parsers = (
     other_facility_type_2:20
     effective_date_of_this_information_mm_dd_yyyy:10
     ',
-    },
-    MTR => {
-        'MTR1' => '
+  },
+  MTR => {
+    'MTR1' => '
         record_type_indicator:4
     route_type:3
     route_identifier:5
@@ -1182,7 +1077,7 @@ my %hash_of_parsers = (
     blanks:201
     sort_sequence_number_for_record:5
     ',
-        'MTR2' => '
+    'MTR2' => '
         record_type_indicator:4
     route_type:3
     route_identifier:5
@@ -1190,7 +1085,7 @@ my %hash_of_parsers = (
     blanks:402
     sort_sequence_number_for_record:5
     ',
-        'MTR3' => '
+    'MTR3' => '
         record_type_indicator:4
     route_type:3
     route_identifier:5
@@ -1198,7 +1093,7 @@ my %hash_of_parsers = (
     blanks:402
     record_sort_sequence_number:5
     ',
-        'MTR4' => '
+    'MTR4' => '
         record_type_indicator:4
     route_type:3
     route_identifier:5
@@ -1206,7 +1101,7 @@ my %hash_of_parsers = (
     blanks:402
     record_sort_sequence_number:5
     ',
-        'MTR5' => '
+    'MTR5' => '
         record_type_indicator:4
     route_type:3
     route_identifier:5
@@ -1220,7 +1115,7 @@ my %hash_of_parsers = (
     longitude_location_of_point:14
     record_sort_sequence_number_segment_sequence_number_for_this_po:5
     ',
-        'MTR6' => '
+    'MTR6' => '
         record_type_indicator:4
     route_type:3
     route_identifier:5
@@ -1237,9 +1132,9 @@ my %hash_of_parsers = (
     blanks:238
     record_sort_sequence_number:5
     ',
-    },
-    NATFIX => {
-        'NATFIX' => '
+  },
+  NATFIX => {
+    'NATFIX' => '
         character_i_that_indicates_beginning_of_record:1
     blank_character_separating_fields1:1
     fix_navaid_airport_id:5
@@ -1257,9 +1152,9 @@ my %hash_of_parsers = (
     blank_character_separating_fields7:1
     fix_navaid_type_or_string_arpt:7
     ',
-    },
-    NAV => {
-        'NAV1' => '
+  },
+  NAV => {
+    'NAV1' => '
     record_type_indicator:4
     navaid_facility_identifier:4
     navaid_facility_type_see_description:20
@@ -1322,14 +1217,14 @@ my %hash_of_parsers = (
     hiwas_flag:1
     transcribed_weather_broadcast_tweb_restriction:1
     ',
-        'NAV2' => '
+    'NAV2' => '
         record_type_indicator:4
     navaid_facility_identifier:4
     navaid_facitity_type:20
     navaid_remarks_free_form_text:600
     filler:174
     ',
-        'NAV3' => '
+    'NAV3' => '
         record_type_indicator:4
     navaid_facility_identifier:4
     navaid_facitity_type:20
@@ -1337,7 +1232,7 @@ my %hash_of_parsers = (
     space_allocated_for_20_more_fixes:720
     blanks:18
     ',
-        'NAV4' => '
+    'NAV4' => '
         record_type_indicator:4
     navaid_facility_identifier:4
     navaid_facitity_type:20
@@ -1346,7 +1241,7 @@ my %hash_of_parsers = (
     space_allocated_for_8_more_holding_patterns:664
     blanks:27
     ',
-        'NAV5' => '
+    'NAV5' => '
         record_type_indicator:4
     navaid_facility_identifier:4
     navaid_facitity_type:20
@@ -1354,7 +1249,7 @@ my %hash_of_parsers = (
     space_allocated_for_23_more_fan_markers:690
     blanks:54
     ',
-        'NAV6' => '
+    'NAV6' => '
         record_type_indicator:4
     navaid_facility_identifier:4
     navaid_facitity_type:20
@@ -1367,9 +1262,9 @@ my %hash_of_parsers = (
     narrative_description_associated_with_the_checkpoint_on_ground:75
     blanks:608
     ',
-    },
-    PFR => {
-        'PFR1' => '
+  },
+  PFR => {
+    'PFR1' => '
         record_type_indicator:4
     origin_facility_location_identifier:5
     destination_facility_location_identifier:5
@@ -1384,7 +1279,7 @@ my %hash_of_parsers = (
     effective_hours_gmt_description_3:15
     route_direction_limitations_description:20
     ',
-        'PFR2' => '
+    'PFR2' => '
         record_type_indicator:4
     origin_facility_location_identifier:5
     destination_facility_location_identifier:5
@@ -1400,9 +1295,9 @@ my %hash_of_parsers = (
     radial_and_distance_from_navaid:7
     blank:169
     ',
-    },
-    PJA => {
-        'PJA1' => '
+  },
+  PJA => {
+    'PJA1' => '
         record_type_indicator:4
     pja_id:6
     navaid_identifier:4
@@ -1431,20 +1326,20 @@ my %hash_of_parsers = (
     pja_use:8
     volume:1
     ',
-        'PJA2' => '
+    'PJA2' => '
         record_type_indicator:4
     pja_id:6
     times_of_use_description:75
     blanks:388
     ',
-        'PJA3' => '
+    'PJA3' => '
         record_type_indicator:4
     pja_id:6
     pja_user_group_name:75
     description:75
     blanks:313
     ',
-        'PJA4' => '
+    'PJA4' => '
         record_type_indicator:4
     pja_id:6
     contact_facility_id:4
@@ -1458,15 +1353,15 @@ my %hash_of_parsers = (
     altitude:20
     blanks:339
     ',
-        'PJA5' => '
+    'PJA5' => '
         record_type_indicator:4
     pja_id:6
     additional_remarks:300
     blanks:163
     ',
-    },
-    SSD => {
-        'SSD' => '
+  },
+  SSD => {
+    'SSD' => '
         internal_sequence_number:5
     not_used1:5
     fix_facility_type_code:2
@@ -1479,9 +1374,9 @@ my %hash_of_parsers = (
     star_sid_transition_name:110
     airways_navaids_using_numbered_fix:62
     ',
-    },
-    STARDP => {
-        'STARDP' => '
+  },
+  STARDP => {
+    'STARDP' => '
         internal_sequence_number:5
     not_used1:5
     fix_facility_type_code:2
@@ -1494,9 +1389,9 @@ my %hash_of_parsers = (
     star_dp_transition_name:110
     airways_navaids_using_numbered_fix:62
     ',
-    },
-    TWR => {
-        'TWR1' => '
+  },
+  TWR => {
+    'TWR1' => '
     record_type_indicator:4
     terminal_communications_facility_identifier:4
     information_effective_date_mm_dd_yyyy:10
@@ -1546,7 +1441,7 @@ my %hash_of_parsers = (
     radio_call_of_facility_that_takes_over_departure_control_when_p:26
     blank:648
     ',
-        'TWR2' => '
+    'TWR2' => '
     record_identifier:4
     terminal_communications_facility_identifier:4
     hours_of_operation_of_the_military_pilot_to_metro_service_pmsv:200
@@ -1558,7 +1453,7 @@ my %hash_of_parsers = (
     hours_of_operation_of_secondary_departure_control_facility_in_l:200
     hours_of_tower_operation_in_local_time:200
     ',
-        'TWR3' => '
+    'TWR3' => '
     record_identifier:4
     terminal_communications_facility_identifier:4
     frequencys_for_master_airport_use_only_and_sectorization_1:44
@@ -1590,13 +1485,13 @@ my %hash_of_parsers = (
     frequencys_for_master_airport_use_only_and_sectorization_not_9:60
     blank:214
     ',
-        'TWR4' => '
+    'TWR4' => '
     record_identifier:4
     terminal_communications_facility_identifier:4
     master_airport_services:100
     blank:1500
     ',
-        'TWR5' => '
+    'TWR5' => '
     record_identifier:4
     terminal_communications_facility_identifier:4
     radar_or_non_radar_primary_approach_call:9
@@ -1613,14 +1508,14 @@ my %hash_of_parsers = (
     radar_hours_of_operation_4:200
     blank:724
     ',
-        'TWR6' => '
+    'TWR6' => '
     record_identifier:4
     terminal_communications_facility_identifier:4
     tower_element_number:5
     tower_remark_text:800
     blank:795
     ',
-        'TWR7' => '
+    'TWR7' => '
     record_identifier:4
     terminal_communications_facility_identifier:4
     satellite_frequency:44
@@ -1647,7 +1542,7 @@ my %hash_of_parsers = (
     satellite_frequency_not_truncated:60
     blank:1086
     ',
-        'TWR8' => '
+    'TWR8' => '
     record_identifier:4
     terminal_communications_facility_identifier:4
     class_b_airspace:1
@@ -1657,7 +1552,7 @@ my %hash_of_parsers = (
     airspace_hours:300
     blank:1296
     ',
-        'TWR9' => '
+    'TWR9' => '
     record_identifier:4
     terminal_communications_facility_identifier:4
     atis_serial_number:4
@@ -1666,9 +1561,9 @@ my %hash_of_parsers = (
     atis_phone_number:18
     blank:1278
     ',
-    },
-    WXL => {
-        'WXL' => '
+  },
+  WXL => {
+    'WXL' => '
     weather_reporting_location_identifier:5
     latitude_of_the_weather_reporting_location:8
     longitude_of_the_weather_reporting_location:9
@@ -1681,23 +1576,23 @@ my %hash_of_parsers = (
     blank:2
     ',
 
-        #bug: these aren't implemented yet
-        '*1' => '
+    #bug: these aren't implemented yet
+    '*1' => '
     continuation_record_indicator:1
     collective_weather_service_type:5
     collective_number:1
     blank:114
     ',
-        '*2' => '
+    '*2' => '
     continuation_record_indicator:1
     affected_area_weather_service_type:5
     affected_areas_states_areas:114
     blank:1
     ',
-    },
+  },
 
-    OBSTACLE => {
-        'OBSTACLE' => '
+  OBSTACLE => {
+    'OBSTACLE' => '
         ors_code:2
         dash:1
         obstacle_number:6
@@ -1747,361 +1642,8 @@ my %hash_of_parsers = (
         julian_date:7
         blank22:1
         '
-        #Daily DOF doesn't use the datchk code, uncomment if using the periodic data
-        #datchk_code:6
-        #'
-    }
-);
 
-#Subroutines to expand text codes for the relevant file-record_type pair
-my %hash_of_expanders = (
-    AFF => {
-        'AFF1' => \&expand_AFF_AFF1,
-    },
-    APT => {
-        'APT1' => \&expand_APT_APT1,
-        'RMK'  => \&expand_APT_RMK,
-    },
-    ILS => {
-        'ILS1' => \&expand_ILS_ILS1,
-    },
-    # ANR => {
-    # # 'ANR2' => \&expand_ANR_ANR2        ,
-    # },
-);
-
-#Subroutines to create geometry columns for the relevant file-record_type pair
-my %hash_of_geometry_creators = (
-    OBSTACLE => {
-        'OBSTACLE' => \&geometry_OBSTACLE_OBSTACLE,
-    },
-    AFF => {
-        'AFF1' => \&geometry_AFF_AFF1,
-        'AFF3' => \&geometry_AFF_AFF3,
-    },
-    APT => {
-        'APT' => \&geometry_APT_APT,
-        'RWY' => \&geometry_APT_RWY,
-    },
-    ARB => {
-        'ARB' => \&geometry_ARB_ARB,
-    },
-    ATS => {
-        'ATS2' => \&geometry_ATS_ATS2,
-        'ATS3' => \&geometry_ATS_ATS3,
-    },
-    AWOS => {
-        'AWOS1' => \&geometry_AWOS_AWOS1,
-    },
-    AWY => {
-        'AWY2' => \&geometry_AWY_AWY2,
-        'AWY3' => \&geometry_AWY_AWY3,
-    },
-    COM => {
-        'COM' => \&geometry_COM_COM,
-    },
-    FIX => {
-        'FIX1' => \&geometry_FIX_FIX1
-    },
-    FSS => {
-        'FSS' => \&geometry_FSS_FSS,
-    },
-    HPF => {
-        'HP1' => \&geometry_HPF_HP1,
-    },
-    ILS => {
-        'ILS2' => \&geometry_ILS_ILS2,
-        'ILS3' => \&geometry_ILS_ILS3,
-        'ILS4' => \&geometry_ILS_ILS4,
-        'ILS5' => \&geometry_ILS_ILS5,
-    },
-    MTR => {
-        'MTR5' => \&geometry_MTR_MTR5
-    },
-    NAV => {
-        'NAV1' => \&geometry_NAV_NAV1
-    },
-    PJA => {
-        'PJA1' => \&geometry_PJA_PJA1
-    },
-    SSD => {
-        'SSD' => \&geometry_SSD_SSD
-    },
-    STARDP => {
-        'STARDP' => \&geometry_STARDP_STARDP
-    },
-    TWR => {
-        'TWR1' => \&geometry_TWR_TWR1,
-        'TWR7' => \&geometry_TWR_TWR7,
-    },
-    WXL => {
-        'WXL' => \&geometry_WXL_WXL,
-    },
-);
-
-#Subroutines to normalize data for the relevant file-record_type pair
-my %hash_of_normalizers = (
-
-    #TODO
-    #APT1 fuel types
-    #COM outlet frequencies
-    #FSS Lots in this one
-    #NAV
-    TWR => {
-        'TWR3' => \&normalize_TWR_TWR3,
-
-        # 'RMK' => \&expand_APT_RMK,
-    },
-
-    # ANR => {
-    # # 'ANR2' => \&expand_ANR_ANR2        ,
-    # },
-);
-
-
-#connect to the database
-my $dbfile = "./56day.db";
-my $dbh = DBI->connect( "dbi:SQLite:dbname=$dbfile", "", "" );
-
-#Set some parameters
-$dbh->do("PRAGMA page_size=4096");
-$dbh->do("PRAGMA synchronous=OFF");
-
-# $dbh->do("PRAGMA count_changes=OFF");
-# $dbh->do("PRAGMA temp_store=MEMORY");
-# $dbh->do("PRAGMA journal_mode=MEMORY");
-
-#Create base tables
-my $create_metadata_table  = "CREATE TABLE android_metadata ( locale TEXT );";
-my $insert_metadata_record = "INSERT INTO android_metadata VALUES ( 'en_US' );";
-
-$dbh->do("DROP TABLE IF EXISTS android_metadata");
-$dbh->do($create_metadata_table);
-$dbh->do($insert_metadata_record);
-
-#Load each data file in turn
-foreach my $key ( sort keys %hash_of_parsers ) {
-
-    #Open appropriate data file in the target directory
-    my ( $filename, $dir, $ext ) = fileparse( $targetdir, qr/\.[^.]*/ );
-    
-    my $datafile = "$dir" . "$key.txt";
-    my $baseFile = $key;
-
-    my $file;
-    open $file, '<', $datafile or die "Could not open $datafile: $!";
-
-    #I'm trying a couple of different ways of looping through files
-    #Read the entire file to an array
-    # my $text = read_file($datafile);
-    # my @lines = <$file>;
-    # close($file);
-    say "";
-
-    #For testing, anything we want to skip
-    #AFF|APT|ARB|ATS|AWOS|AWY|COM|FIX|FSS|HARFIX|HPF|ILS|LID|MTR|NATFIX|NAV|OBSTACLE|PFR|PJA|SSD|STARDP|TWR|WXL
-    # next if ( $key =~ /^()$/gi );    #|ARB|ATS|AWOS|AWY|COM|FIX
-    # next
-      # unless ( $key =~
-        # /AFF|APT|ARB|ATS|AWOS|AWY|COM|FIX|FSS|HARFIX|HPF|ILS|LID|MTR|NATFIX|NAV|OBSTACLE|PFR|PJA|SSD|STARDP|TWR|WXL/
-      # );
-
-#     next unless ($key =~ /OBSTACLE/);
-    
-    #Open an SQL transaction
-    $dbh->begin_work();
-    
-    #This is used as a explicit foreign key for child records
-    my $master_record_row_id = 0;
-    
-    while (<$file>) {
-        
-        # while ($text) {
-        # for my $currentLineNumber (0 .. $#lines) {
-        # print "$i: $x[$i]\n";
-        # foreach (@lines) {
-        my $textOfCurrentLine = $_;
-
-        # my $textOfCurrentLine = $lines[$currentLineNumber];
-        my $recordType;
-        my $currentLineNumber = $.;
-
-        # say $currentLineNumber;
-        # print "\rLoading $baseFile: # $currentLineNumber...";
-        say "Loading $baseFile: $currentLineNumber..."
-          if ( $currentLineNumber % 1000 == 0 );
-
-        #Remove linefeed characters
-        $textOfCurrentLine =~ s/\R//g;
-
-        #Set up the recordType because input files don't follow the same format
-        given ($baseFile) {
-            when (/ARB|COM|HARFIX|NATFIX|SSD|STARDP|OBSTACLE/) {
-                $recordType = $baseFile;
-            }
-            when (/WXL/) {
-                $recordType = $baseFile;
-
-                #BUG TODO Handle the oddball continuation records
-                #We'll just skip them for now since they don't contain much interesting data
-                next if ( $textOfCurrentLine =~ m/^\*/ );
-            }
-            when (/FSS/) {
-                $recordType = $baseFile;
-
-                #BUG TODO Handle the oddball continuation records
-                #We'll just skip them for now since
-                next if ( substr( $textOfCurrentLine, 0, 4 ) =~ m/\*/ );
-            }
-            when (/AWOS/) {
-                $recordType = trim( substr( $textOfCurrentLine, 0, 5 ) );
-            }
-            when (/AFF|ANR|ATS|AWY|FIX|HPF|ILS|MTR|NAV|PJA|PFR|TWR/) {
-                $recordType = trim( substr( $textOfCurrentLine, 0, 4 ) );
-            }
-            when (/APT/) {
-                $recordType = trim( substr( $textOfCurrentLine, 0, 3 ) );
-            }
-            when (/LID/) {
-                $recordType = trim( substr( $textOfCurrentLine, 0, 1 ) );
-            }
-            default {
-                die "I don't recognize $baseFile while reading $datafile";
-            }
-
-        }
-
-        #Die if there is not a parse format for this input file and recordType
-        die
-          "$datafile line # $currentLineNumber : No parser defined for this recordType: $recordType"
-          unless exists $hash_of_parsers{$baseFile}{$recordType};
-
-        #Remove any spaces from the recordType
-        $recordType =~ s/\s+//g;
-
-        #Create an array to feed to Parse::FixedLength from the parser format we looked up in the hash_of_parsers
-        my @parserArray =
-          split( ' ', $hash_of_parsers{$baseFile}{$recordType} );
-
-        #Create the specific parser for this recordType
-        my $parser_specific =
-          Parse::FixedLength->new( [@parserArray], \%parameters );
-
-        #Check for mismatch between expected and actual lengths
-        die "Line # $currentLineNumber - Bad parse for $recordType: Expected "
-          . $parser_specific->length
-          . " characters but read "
-          . length($textOfCurrentLine) . "\n"
-          unless $parser_specific->length == length($textOfCurrentLine);
-
-        #Parse with specific parser
-        my $data2 = $parser_specific->parse_newref($textOfCurrentLine);
-
-
-        #Normalize data, will create new tables
-        if ( exists $hash_of_normalizers{$baseFile}{$recordType} ) {
-
-            #Call the appropriate subroutine, passing a reference to our hash and the database handler
-            $hash_of_normalizers{$baseFile}{$recordType}->( $data2, $dbh );
-        }
-
-        #Expand text if requested, may add columns to hash
-        if ( $shouldExpandText
-            && exists $hash_of_expanders{$baseFile}{$recordType} )
-        {
-
-            #Call the appropriate subroutine, passing a reference to our hash
-            $hash_of_expanders{$baseFile}{$recordType}->($data2);
-        }
-
-        #If requested, provide decimalized lon/lat columns in order to create spatialite geometry, may add columns to hash
-        if ( $shouldCreateGeometry
-            && exists $hash_of_geometry_creators{$baseFile}{$recordType} )
-        {
-
-            #Call the appropriate subroutine, passing a reference to our hash
-            $hash_of_geometry_creators{$baseFile}{$recordType}->($data2);
-        }
-
-        #Delete any keys/columns with "blank" in the name
-        {
-            my @unwanted;
-            foreach my $key ( sort keys $data2 ) {
-                if ( $key =~ /blank/i ) {
-
-                    #Save this key to our array of entries to delete
-                    push @unwanted, $key;
-                }
-            }
-
-            foreach my $key (@unwanted) {
-                delete $data2->{$key};
-            }
-        }
-
-        #Create the table for each recordType if we haven't already
-        #uses all the sorted keys in the hash as column names
-        unless ( $haveCreatedTable{$baseFile}{$recordType} ) {
-
-            #Drop existing table
-            my $drop = "DROP TABLE IF EXISTS " . $baseFile . "_" . $recordType;
-            $dbh->do($drop);
-
-            #Makes a "CREATE TABLE" statement based on the keys of the hash, columns sorted alphabetically
-            #Include the master_record_row_id as an explicit foreign key to master record
-            #The inclusion of " NONE" here is  to force sqlite to not assign affinity to columns, since that is making it "TEXT" by default
-            my $createStmt =
-                'CREATE TABLE '
-              . $baseFile . "_"
-              . $recordType
-              . '(_id INTEGER PRIMARY KEY AUTOINCREMENT,'
-              . 'master_record_row_id INTEGER,'
-                  . join( ' NONE,', sort { lc $a cmp lc $b } keys %$data2 ) 
-              . ' NONE)';
-
-            # Create the table
-            $dbh->do($createStmt);
-
-            #Mark it as created
-            $haveCreatedTable{$baseFile}{$recordType} = 1;
-        }
-    
-    #Master records have a master_record_row_id of 0    
-    if ($recordType =~ m/1$/ || $recordType =~ m/^APT$/) {
-    $master_record_row_id = 0;
-    }
-        #-------------------
-        #Make an "INSERT INTO" statement based on the keys and values of the hash
-        #Include the master_record_row_id as an explicit foreign key to master record
-        my $insertStmt =
-            'INSERT INTO '
-          . $baseFile 
-          . "_"
-          . $recordType 
-          . '('
-          . 'master_record_row_id,'
-          . join( ',', keys $data2 )
-          . ') VALUES ('
-          . $master_record_row_id 
-          . ','
-          . join( ',', ('?') x keys $data2 ) 
-          . ')';
-
-        #Insert the values into the database
-        my $sth = $dbh->prepare($insertStmt); 
-        $sth->execute( values $data2 );
-        
-        #If we just inserted a master record 
-        #Then get and save it's rowId to be used as a foreign key for its child records
-        if ($recordType =~ m/1$/ || $recordType =~ m/^APT$/) {
-            # my $getLastRowIdStatement = "SELECT last_insert_rowid()";
-            # my $lastRowId = $dbh->do($getLastRowIdStatement);
-            $master_record_row_id = $dbh->func('last_insert_rowid');
-            # say "Last row was $master_record_row_id";
-            }
-    }
-    say "Commit";
-    #Commit the transaction
-    $dbh->commit();
-}
-
+      #Daily DOF doesn't use the datchk code, uncomment if using the periodic data
+      #datchk_code:6
+      #'
+  }

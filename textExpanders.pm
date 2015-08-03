@@ -33,7 +33,7 @@ $VERSION = 1.00;
   expand_APT_APT1
   expand_APT_RMK
   expand_ILS_ILS1
-  );
+);
 
 my %BLANKHASH = (
 
@@ -366,11 +366,14 @@ sub expand_APT_APT1 {
 
 sub expand_ILS_ILS1 {
     my ($hashRef) = validate_pos( @_, { type => HASHREF } );
-    
-        my $vardir            = substr( $hashRef->{the_magnetic_variation_at_the_ils_facility}, -1, 1 );
-        my $magneticVariation = substr( $hashRef->{the_magnetic_variation_at_the_ils_facility}, 0,  2 );
-        $magneticVariation = -($magneticVariation) if $vardir eq "W";
-        $hashRef->{the_magnetic_variation_at_the_ils_facility_expanded}=$magneticVariation;
+
+    my $vardir =
+      substr( $hashRef->{the_magnetic_variation_at_the_ils_facility}, -1, 1 );
+    my $magneticVariation =
+      substr( $hashRef->{the_magnetic_variation_at_the_ils_facility}, 0, 2 );
+    $magneticVariation = -($magneticVariation) if $vardir eq "W";
+    $hashRef->{the_magnetic_variation_at_the_ils_facility_expanded} =
+      $magneticVariation;
 
 }
 
