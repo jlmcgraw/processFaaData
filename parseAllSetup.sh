@@ -6,6 +6,7 @@ IFS=$(printf '\n\t')  # Always put this in Bourne shell scripts
 nasr56dayBaseUrl=https://nfdc.faa.gov/webContent/56DaySub
 nasr56dayFileName=56DySubscription_August_20__2015_-_October_15__2015.zip
 
+# BUG TODO Currently not working for some reason
 # #get current datafile
 # wget --timestamping $nasr56dayBaseUrl/$nasr56dayFileName
 
@@ -33,13 +34,13 @@ if [ ! -d "$controlledairspace" ]; 	then
 	exit 1
  	fi
 
-
-
 #delete any existing files
 set +e
 rm $outputdir/56day.db
 rm $outputdir/spatial56day.db
 rm ./DAILY_DOF.ZIP ./DOF.DAT
+rm $outputdir/ControlledAirspace.sqlite 
+rm $outputdir/SpecialUseAirspace.sqlite
 set -e
 
 #get the daily obstacle file
@@ -76,55 +77,54 @@ echo "---------- Convert controlled and special use airspaces into spatialite da
 # 
 # #Edit this to point to where you cloned the GDAL repository to
 # export GDAL_DATA="/home/jlmcgraw/Documents/github/gdal/gdal/data/"
-# #GML related environment variables for the conversion
-# export GML_FETCH_ALL_GEOMETRIES=YES
-# export GML_SKIP_RESOLVE_ELEMS=NONE
-# 
-# 
-# dbfile=SpecialUseAirspace.sqlite
-# if [ -e $outputdir/$dbfile ]; then (rm $outputdir/$dbfile) fi
-# find $sua \
-#   -name "*.xml" \
-#   -type f \
-#   -print \
-#   -exec ogr2ogr \
-#     -f SQLite \
-#     $outputdir/$dbfile \
-#     {} \
-#     -explodecollections \
-#     -a_srs WGS84 \
-#     -update \
-#     -append \
-#     -wrapdateline \
-#     -fieldTypeToString ALL \
-#     -dsco SPATIALITE=YES \
-#     -skipfailures \
-#     -lco LAUNDER=NO \
-#     --config OGR_SQLITE_SYNCHRONOUS OFF \
-#     --config OGR_SQLITE_CACHE 128 \
-#     -gt 65536 \
-#     \;
+#GML related environment variables for the conversion
+export GML_FETCH_ALL_GEOMETRIES=YES
+export GML_SKIP_RESOLVE_ELEMS=NONE
+
+dbfile=SpecialUseAirspace.sqlite
+#if [ -e $outputdir/$dbfile ]; then (rm $outputdir/$dbfile) fi
+find $sua \
+  -name "*.xml" \
+  -type f \
+  -print \
+  -exec ogr2ogr \
+    -f SQLite \
+    $outputdir/$dbfile \
+    {} \
+    -explodecollections \
+    -a_srs WGS84 \
+    -update \
+    -append \
+    -wrapdateline \
+    -fieldTypeToString ALL \
+    -dsco SPATIALITE=YES \
+    -skipfailures \
+    -lco LAUNDER=NO \
+    --config OGR_SQLITE_SYNCHRONOUS OFF \
+    --config OGR_SQLITE_CACHE 128 \
+    -gt 65536 \
+    \;
 
     
 dbfile=ControlledAirspace.sqlite
-if [ -e $outputdir/$dbfile ]; then (rm $outputdir/$dbfile) fi
+#if [ -e $outputdir/$dbfile ]; then (rm $outputdir/$dbfile) fi
 
 find $controlledairspace \
   -name "*.shp" \
   -type f \
   -print \
   -exec ogr2ogr \
-  -f SQLite \
-  $outputdir/$dbfile \
-  {} \
-  -explodecollections \
-  -update \
-  -append \
-  -dsco SPATIALITE=YES \
-  -skipfailures \
-  -lco SPATIAL_INDEX=YES \
-  -lco LAUNDER=NO \
-  --config OGR_SQLITE_SYNCHRONOUS OFF \
-  --config OGR_SQLITE_CACHE 128 \
-  -gt 65536 \
+    -f SQLite \
+    $outputdir/$dbfile \
+    {} \
+    -explodecollections \
+    -update \
+    -append \
+    -dsco SPATIALITE=YES \
+    -skipfailures \
+    -lco SPATIAL_INDEX=YES \
+    -lco LAUNDER=NO \
+    --config OGR_SQLITE_SYNCHRONOUS OFF \
+    --config OGR_SQLITE_CACHE 128 \
+    -gt 65536 \
   \;
