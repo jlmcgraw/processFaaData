@@ -35,8 +35,11 @@ How to get this utility up and running:
 	Requires perl version > 5.018
 
 How to use these utilities
-	parseAllSetup.sh
-		Creates the sqlite database, expanding text and creating spatialite geometries.  Then converts to spatialite database.
+	create_databases.sh <name of 56 day .zip file>
+                Usage: ./create_databases.sh <name of 56 day .zip file>
+                    eg: "create_databases.sh 56DySubscription_December_10__2015_-_February_04__2016.zip"
+                    
+		Creates the sqlite database, expanding text and creating spatialite geometries.  Then converts to spatialite database.  Also creates airspace spatialite databases
 
 	parseAll.pl
 		Usage: ./parseAll.pl -v -e <data directory>
@@ -46,12 +49,9 @@ How to use these utilities
 		-g: create geometry for spatialite
  
 Running
-	Extract 56-day .zip file
-
-	Edit parseAllSetup.sh, change "datadir" variable to point to the newly unzipped 56 day directory
-		eg: "datadir=./56DySubscription_September_18__2014_-_November_13__2014/"
-
-	./parseAllSetup.sh
+        Download the most recent 56 day data from https://nfdc.faa.gov/xwiki/bin/view/NFDC/56+Day+NASR+Subscription
+	
+	run "./create_databases.sh <name of 56 day .zip file>"
 
 
 This software and the data it produces come with no guarantees about accuracy or usefulness whatsoever!  Don't use it when your life may be on the line!
