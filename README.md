@@ -35,6 +35,7 @@ How to get this utility up and running:
 	Requires perl version > 5.018
 
 How to use these utilities
+
 	create_databases.sh <name of 56 day .zip file>
                 Usage: ./create_databases.sh <name of 56 day .zip file>
                     eg: "create_databases.sh 56DySubscription_December_10__2015_-_February_04__2016.zip"
@@ -49,6 +50,7 @@ How to use these utilities
 		-g: create geometry for spatialite
  
 Running
+
         Download the most recent 56 day data from https://nfdc.faa.gov/xwiki/bin/view/NFDC/56+Day+NASR+Subscription
 	
 	run "./create_databases.sh <name of 56 day .zip file>"
