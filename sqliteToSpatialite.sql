@@ -4,7 +4,11 @@ PRAGMA synchronous=OFF;
 -- PRAGMA default_cache_size=10000;
 -- PRAGMA locking_mode=EXCLUSIVE;
 
+-- The old way of loading spatialite
 SELECT load_extension('libspatialite.so');
+-- The new way
+-- See https://www.gaia-gis.it/fossil/libspatialite/wiki?name=mod_spatialite
+SELECT load_extension('mod_spatialite');
 SELECT InitSpatialMetadata(1);
 
 /*

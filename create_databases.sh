@@ -2,9 +2,18 @@
 set -eu                # Always put this in Bourne shell scripts
 IFS=$(printf '\n\t')  # Always put this in Bourne shell scripts
 
+#Check count of command line parameters
+if [ "$#" -ne 1 ] ; then
+  echo "Usage: $0 56_Day_Subscription_Zip_file" >&2
+  echo "eg. $0 56DySubscription_December_10__2015_-_February_04__2016.zip"
+  exit 1
+fi
 
-nasr56dayBaseUrl=https://nfdc.faa.gov/webContent/56DaySub
-nasr56dayFileName=56DySubscription_August_20__2015_-_October_15__2015.zip
+#Get command line parameters
+nasr56dayFileName=$1
+
+# nasr56dayBaseUrl=https://nfdc.faa.gov/webContent/56DaySub
+# nasr56dayFileName=56DySubscription_December_10__2015_-_February_04__2016.zip
 
 # BUG TODO Currently not working for some reason
 # #get current datafile
