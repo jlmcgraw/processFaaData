@@ -6,6 +6,7 @@ IFS=$(printf '\n\t')  # Always put this in Bourne shell scripts
 if [ "$#" -ne 1 ] ; then
   echo "Usage: $0 56_Day_Subscription_Zip_file" >&2
   echo "eg. $0 56DySubscription_December_10__2015_-_February_04__2016.zip"
+  echo " Download most recent data from https://nfdc.faa.gov/xwiki/bin/view/NFDC/56+Day+NASR+Subscription"
   exit 1
 fi
 
@@ -18,6 +19,7 @@ nasr56dayFileName=$1
 # BUG TODO Currently not working for some reason
 # #get current datafile
 # wget --timestamping $nasr56dayBaseUrl/$nasr56dayFileName
+# wget https://nfdc.faa.gov/webContent/56DaySub/56DySubscription_December_10__2015_-_February_04__2016.zip
 
 #Where the 56 day data is unzipped to
 datadir=$(basename $nasr56dayFileName .zip)

@@ -17,10 +17,11 @@ How to get this utility up and running:
 	Run setup.sh to install necessary dependencies
 		./setup.sh
 
-	Download the current 56-day data
-		https://nfdc.faa.gov/xwiki/bin/view/NFDC/56+Day+NASR+Subscription
+	Download the current 56-day data from https://nfdc.faa.gov/xwiki/bin/view/NFDC/56+Day+NASR+Subscription
+		wget https://nfdc.faa.gov/webContent/56DaySub/56DySubscription_December_10__2015_-_February_04__2016.zip
 
-	Download the current obstacle data (Daily DOF downloaded automatically by parseAllSetup.sh)
+
+	Download the current obstacle data (Daily DOF downloaded automatically by create_databases.sh)
 		http://tod.faa.gov/tod/public/TOD_DOF.html
 			or
 		http://tod.faa.gov/tod/DAILY_DOF.ZIP
@@ -35,8 +36,8 @@ How to use these utilities
                     
 		Creates the sqlite database, expanding text and creating spatialite geometries.  Then converts to spatialite database.  Also creates airspace spatialite databases
 
-	parseAll.pl
-		Usage: ./parseAll.pl -v -e <data directory>
+	parseNasr.pl
+		Usage: ./parseNasr.pl -v -e <data directory>
 
 		-v: enable debug output
 		-e: expand text
