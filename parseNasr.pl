@@ -32,15 +32,22 @@ use 5.018;
 use strict;
 use warnings;
 
+#Standard libraries
 use File::Basename;
 use Getopt::Std;
-use Parse::FixedLength;
 use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
+use File::Slurp;
+use vars qw/ %opt /;
+
+#Allow use of locally installed libraries in conjunction with Carton
+use FindBin '$Bin';
+use lib "$FindBin::Bin/local/lib/perl5";
+#Non-standard libaries
+use Parse::FixedLength;
+use Params::Validate qw(:all);
 use DBI;
 use processFaaData;
-use File::Slurp;
-use Params::Validate qw(:all);
 
 #Uncomment to show debugging statements
 #use Smart::Comments;
@@ -54,7 +61,7 @@ use textExpanders;
 #Subroutines to normalize tables, called via dispatch table %hash_of_normalizers
 use normalizingProcessors;
 
-use vars qw/ %opt /;
+
 
 my $opt_string = 'veg';
 
@@ -75,6 +82,7 @@ my $debug                = $opt{v};
 my $shouldExpandText     = $opt{e};
 my $shouldCreateGeometry = $opt{g};
 
+#Parameters for the FixedLength parser
 my %parameters = (
 
     # 'autonum' => 'false',
