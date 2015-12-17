@@ -5,7 +5,7 @@ PRAGMA synchronous=OFF;
 -- PRAGMA locking_mode=EXCLUSIVE;
 
 -- The old way of loading spatialite
-SELECT load_extension('libspatialite.so');
+-- SELECT load_extension('libspatialite.so');
 -- The new way
 -- See https://www.gaia-gis.it/fossil/libspatialite/wiki?name=mod_spatialite
 SELECT load_extension('mod_spatialite');

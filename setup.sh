@@ -4,12 +4,14 @@ IFS=$(printf '\n\t')  # Always put this in Bourne shell scripts
 
 #Install necessary software
 sudo apt-get install \
-                     sqlite3 \
-                     perltidy \
-                     cpanminus \
-                     Carton \
-                     libspatialite-dev \
-                     spatialite-bin
+                    sqlite3 \
+                    perltidy \
+                    cpanminus \
+                    Carton \
+                    libspatialite-dev \
+                    spatialite-bin \
+                    libsqlite3-mod-spatialite \
+                    gdal-bin
                      
 #Install the libraries in our cpanfile locally
 carton install
