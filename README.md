@@ -14,15 +14,8 @@ How to get this utility up and running:
 	Download the repository
 		git clone https://github.com/jlmcgraw/processFaaData.git
 
-	Install the following external programs
-		sqlite3 	(sudo apt-get install sqlite3)
-		spatialite	(sudo apt-get install libspatialite-dev spatialite-bin)
-
-	Install the following CPAN modules
-		DBI 		(sudo apt-get install libdbi-perl)
-		DBD::SQLite3	(sudo apt-get install libdbd-sqlite3-perl) 
-		File::Slurp	(sudo apt-get install libfile-slurp-perl)
-		Params::Validate (sudo apt-get install libparams-validate-perl)
+	Run setup.sh to install necessary dependencies
+		./setup.sh
 
 	Download the current 56-day data
 		https://nfdc.faa.gov/xwiki/bin/view/NFDC/56+Day+NASR+Subscription
