@@ -110,12 +110,14 @@ find $sua \
     -fieldTypeToString ALL \
     -dsco SPATIALITE=YES \
     -skipfailures \
+    -lco SPATIAL_INDEX=YES \
     -lco LAUNDER=NO \
     --config OGR_SQLITE_SYNCHRONOUS OFF \
     --config OGR_SQLITE_CACHE 128 \
     -gt 65536 \
     \;
-
+    
+ogrinfo $dbfile -sql "VACUUM"
     
 dbfile=ControlledAirspace.sqlite
 #if [ -e $outputdir/$dbfile ]; then (rm $outputdir/$dbfile) fi
@@ -131,6 +133,7 @@ find $controlledairspace \
     -explodecollections \
     -update \
     -append \
+    -wrapdateline \
     -dsco SPATIALITE=YES \
     -skipfailures \
     -lco SPATIAL_INDEX=YES \
@@ -139,3 +142,5 @@ find $controlledairspace \
     --config OGR_SQLITE_CACHE 128 \
     -gt 65536 \
   \;
+
+ogrinfo $dbfile -sql "VACUUM"

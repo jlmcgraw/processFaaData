@@ -27,7 +27,8 @@ SELECT InitSpatialMetadata(1);
                 SET obstacleGeom = MakePoint( 
                                 CAST (obstacle_longitude AS DOUBLE), 
                                 CAST (obstacle_latitude AS DOUBLE), 
-                                4326);  
+                                4326);
+
 --AIR ROUTE TRAFFIC CONTROL CENTER FACILITIES AND COMMUNICATIONS (AFF)
         SELECT AddGeometryColumn( 'AFF_AFF1' , 'geometry' , 4326, 'POINT');
         SELECT CreateSpatialIndex( 'AFF_AFF1' , 'geometry'  );
@@ -36,7 +37,7 @@ SELECT InitSpatialMetadata(1);
                                 CAST (longitude AS DOUBLE), 
                                 CAST (latitude AS DOUBLE), 
                                 4326);
-                                
+
         SELECT AddGeometryColumn( 'AFF_AFF3' , 'geometry' , 4326, 'POINT');
         SELECT CreateSpatialIndex( 'AFF_AFF3' , 'geometry'  );
         UPDATE AFF_AFF3
@@ -44,10 +45,11 @@ SELECT InitSpatialMetadata(1);
                                 CAST (longitude AS DOUBLE), 
                                 CAST (latitude AS DOUBLE), 
                                 4326);
-      
+
 --Airports (APT)
         --#The airport reference points
         SELECT AddGeometryColumn( 'APT_APT' , 'referenceGeom' , 4326, 'POINT');
+        SELECT CreateSpatialIndex( 'APT_APT' , 'referenceGeom' );
         UPDATE APT_APT 
                 SET referenceGeom = MakePoint(
                                         CAST (apt_longitude AS DOUBLE), 
@@ -131,7 +133,7 @@ SELECT InitSpatialMetadata(1);
                 SET geometry = MakePoint( 
                                 CAST (longitude AS DOUBLE), 
                                 CAST (latitude AS DOUBLE), 
-                                4326);                                                                
+                                4326);
 --AWOS Stations
         SELECT AddGeometryColumn( 'AWOS_AWOS1' , 'geometry' , 4326, 'POINT');
         SELECT CreateSpatialIndex( 'AWOS_AWOS1' , 'geometry'  );
@@ -156,7 +158,7 @@ SELECT InitSpatialMetadata(1);
                 SET geometry = MakePoint( 
                                 CAST (longitude AS DOUBLE), 
                                 CAST (latitude AS DOUBLE), 
-                                4326);                                 
+                                4326);
 
 --COM 
         SELECT AddGeometryColumn( 'COM_COM' , 'geometry' , 4326, 'POINT');
@@ -166,6 +168,7 @@ SELECT InitSpatialMetadata(1);
                                 CAST (longitude AS DOUBLE), 
                                 CAST (latitude AS DOUBLE), 
                                 4326);
+
 --Fixes (FIX)
         SELECT AddGeometryColumn( 'FIX_FIX1' , 'geometry' , 4326, 'POINT');
         SELECT CreateSpatialIndex( 'FIX_FIX1' , 'geometry'  );
@@ -174,6 +177,7 @@ SELECT InitSpatialMetadata(1);
                                 CAST (longitude AS DOUBLE), 
                                 CAST (latitude AS DOUBLE), 
                                 4326);
+
 --Flight Service Stations (FSS)
         SELECT AddGeometryColumn( 'FSS_FSS' , 'geometry' , 4326, 'POINT');
         SELECT CreateSpatialIndex( 'FSS_FSS' , 'geometry'  );
@@ -182,6 +186,7 @@ SELECT InitSpatialMetadata(1);
                                 CAST (longitude AS DOUBLE), 
                                 CAST (latitude AS DOUBLE), 
                                 4326);
+
 --Holding Patterns (HPF)
         SELECT AddGeometryColumn( 'HPF_HP1' , 'fixGeometry' , 4326, 'POINT');
         SELECT CreateSpatialIndex( 'HPF_HP1' , 'fixGeometry'  );
@@ -194,11 +199,11 @@ SELECT InitSpatialMetadata(1);
         SELECT AddGeometryColumn( 'HPF_HP1' , 'navaidGeometry' , 4326, 'POINT');
         SELECT CreateSpatialIndex( 'HPF_HP1' , 'navaidGeometry'  );
         UPDATE HPF_HP1
-        
                 set navaidGeometry = MakePoint( 
                                 CAST (longitude_of_the_associated_navaid AS DOUBLE), 
                                 CAST (latitude_of_the_associated_navaid AS DOUBLE), 
-                                4326);                              
+                                4326);
+
 --ILS (ILS)
         SELECT AddGeometryColumn( 'ILS_ILS2' , 'geometry' , 4326, 'POINT');
         SELECT CreateSpatialIndex( 'ILS_ILS2' , 'geometry'  );
@@ -318,6 +323,40 @@ SELECT InitSpatialMetadata(1);
                                 4326);
                                 
 --#Create airway lines
+--Military training routes
+    CREATE TABLE 
+            MTR_MTRLINES (unique_id
+                , route_identifier
+                , route_type
+                , geometry
+                );
+                
+    INSERT INTO MTR_MTRLINES 
+        SELECT
+            mtr_mtr5.route_type || mtr_mtr5.route_identifier   AS unique_id
+            , mtr_mtr5.route_identifier
+            , mtr_mtr5.route_type
+            , 'linestring( ' || GROUP_CONCAT(mtr_mtr5.longitude || ' ' || mtr_mtr5.latitude) || ' )' AS geometry
+        FROM
+            mtr_mtr5
+        GROUP BY
+            unique_id
+        ORDER BY
+            CAST(mtr_mtr5.record_sort_sequence_number_segment_sequence_number_for_this_po AS REAL) 
+        ;
+        
+
+    SELECT 
+        AddGeometryColumn( 'MTR_MTRLINES' , 'airwayGeom' , 4326, 'LINESTRING');
+
+    SELECT 
+        CreateSpatialIndex( 'MTR_MTRLINES' , 'airwayGeom' );
+
+    UPDATE MTR_MTRLINES
+            SET 
+                airwayGeom = LineFromText(geometry, 4326)
+            ; 
+            
 --Airway segments
 --First create a table 
         CREATE TABLE 

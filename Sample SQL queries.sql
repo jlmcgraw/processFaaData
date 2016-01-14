@@ -1,244 +1,251 @@
---------------------------------------
--- --Points in an airway
--- --------------------------------------
+--------------------------------------------------------------------------------
+--All frequencies, including remotes, for an airport
+--The results are currently rather redundant and need to be simplified with 
+-- group_concat
+--------------------------------------------------------------------------------
 SELECT 
-  awy1.airway_designation
-  , awy1.airway_type
-  , awy1.airway_point_sequence_number
-  , awy2.navaid_facility_fix_name
-  , awy1.point_to_point_minimum_enroute_altitude_mea
-  , awy2.navaid_facility_fix_latitude
-  , awy2.navaid_facility_fix_longitude
-  , awy2a.navaid_facility_fix_latitude
-  , awy2a.navaid_facility_fix_longitude
+    apt.location_identifier
+    , apt.landing_facility_site_number
+    , apt.common_traffic_advisory_frequency_ctaf
+    , apt.unicom_frequency_available_at_the_airport
+    , awos.wx_sensor_type
+    , awos.station_frequency   
+    , twr1.radio_call_used_by_pilot_to_contact_tower
+    , twr1.radio_call_of_facility_that_furnishes_primary_approach_control
+    , twr3a.frequency
+    , twr3a.frequency_use
+    , twr7.satellite_frequency_use
+    , twr7.satellite_frequency
+
 FROM 
-  awy_awy1 AS awy1
-JOIN 
- awy_awy2 AS awy2
-    ON
-      awy1.airway_point_sequence_number = awy2.airway_point_sequence_number 
-      AND
-      awy1.airway_designation = awy2.airway_designation
-JOIN 
- awy_awy2 AS awy2a
-    ON
-      CAST (awy1.airway_point_sequence_number AS REAL) + 10 = CAST(awy2a.airway_point_sequence_number  AS REAL)
-      AND
-      awy1.airway_designation = awy2a.airway_designation      
-      
+    apt_apt AS apt
+
+LEFT OUTER JOIN 
+    twr_twr1 AS twr1
+        ON
+            apt.landing_facility_site_number 
+            = twr1.landing_facility_site_number
+
+LEFT OUTER JOIN
+    twr_twr3a AS twr3a
+        ON
+            apt.location_identifier 
+            = twr3a.terminal_communications_facility_identifier
+            
+LEFT OUTER JOIN 
+    twr_twr7 AS twr7
+        ON
+            apt.landing_facility_site_number = twr7.satellite_airport_site_number
+
+LEFT OUTER JOIN 
+    awos_awos1 as awos
+        ON
+            apt.landing_facility_site_number 
+            = awos.landing_facility_site_number_when_station_located_at_airport
 WHERE
-        awy1.airway_designation = 'V38'
+    apt.location_identifier IN ('LAX' , 'W94' , 'OFP' , 'RIC' , 'SAC' , 'VCB' , 'JYO' , 'TGI')
+        AND
+    (twr3a.frequency IS NULL OR CAST(twr3a.frequency AS REAL) BETWEEN 118 and 137)
+        AND
+    (twr7.satellite_frequency IS NULL OR CAST(twr7.satellite_frequency AS REAL) BETWEEN 118 and 137)
+-- --     --apt.associated_state_name LIKE "%VIR%"
+
 ORDER BY
-  awy1.airway_point_sequence_number
+    apt.location_identifier
+    , twr3a.frequency_use
 ;
 
+--------------------------------------------------------------------------------
+--Individual segments in an airway
+--  Won't work if sequence numbers aren't incrementing by 10
+--------------------------------------------------------------------------------
+.headers on
+.mode csv
+.output airways.csv
 
---Points in airway with latitude defined
-SELECT 
-  awy1.airway_designation
-  , awy1.airway_type
-  , awy1.airway_point_sequence_number
-  , awy2.navaid_facility_fix_name
-  , awy1.point_to_point_minimum_enroute_altitude_mea
-  , awy2.navaid_facility_fix_latitude
-  , awy2.navaid_facility_fix_longitude
+SELECT
+    awy1.airway_designation
+    , awy1.airway_type
+    , awy1.airway_point_sequence_number
+    , awy2.navaid_facility_fix_name
+    , awy1.point_to_point_minimum_enroute_altitude_mea
+    , awy1.point_to_point_minimum_enroute_altitude_mea_opposite_direction
+    , awy2.fix_minimum_reception_altitude_mra
+    , awy2.longitude AS Longitude1
+    , awy2.latitude AS Latitude1
+    , awy2a.longitude AS Longitude2
+    , awy2a.latitude AS Latitude2
+    , 'linestring( ' 
+        || awy2.longitude 
+        || ' ' 
+        || awy2.latitude  
+        || ' , ' 
+        || awy2a.longitude 
+        || ' ' 
+        || awy2a.latitude 
+        || ' )' 
+            AS geometry
+    
 FROM 
-  awy_awy1 AS awy1
+    awy_awy1 AS awy1
 JOIN 
- awy_awy2 AS awy2
-    ON
-      awy1.airway_point_sequence_number = awy2.airway_point_sequence_number 
-      AND
-      awy1.airway_designation = awy2.airway_designation
-WHERE
-        awy1.airway_designation = 'J1'
-          AND
-        awy2.navaid_facility_fix_latitude != ''
+    awy_awy2 AS awy2
+        ON
+            awy1.airway_designation = awy2.airway_designation
         AND
-        awy2.navaid_facility_fix_latitude != '0'
-ORDER BY
-  awy1.airway_point_sequence_number
-  ;
-
---------------------------------------
---All frequencies for a satellite airport
---------------------------------------
-SELECT 
-  apt.location_identifier
-  , apt.landing_facility_site_number
-  , apt.common_traffic_advisory_frequency_ctaf
-  , awos.wx_sensor_type
-  , awos.station_frequency
-  , twr7.satellite_frequency_use
-  , twr7.satellite_frequency
-  , twr1.radio_call_of_facility_that_furnishes_primary_approach_control
-  -- , twr3a.frequency
-  -- , twr3a.frequency_use
-FROM 
-  apt_apt AS apt
+            awy1.airway_point_sequence_number = awy2.airway_point_sequence_number 
 JOIN 
-  twr_twr7 AS twr7
-    ON
-      apt.landing_facility_site_number=twr7.satellite_airport_site_number
-JOIN
-  twr_twr1 AS twr1
-    ON
-      apt.landing_facility_site_number=twr1.landing_facility_site_number
--- LEFT OUTER JOIN
-  -- twr_twr3a AS twr3a
-    -- ON
-      -- apt.location_identifier=twr3a.terminal_communications_facility_identifier
-JOIN
-  awos_awos1 as awos
-    ON
-      apt.landing_facility_site_number=awos.landing_facility_site_number_when_station_located_at_airport
+    awy_awy2 AS awy2a
+        ON
+            awy1.airway_designation = awy2a.airway_designation            
+        AND
+            CAST (awy1.airway_point_sequence_number AS REAL) + 10 = CAST(awy2a.airway_point_sequence_number AS REAL)
 WHERE
-        apt.location_identifier = 'EDU'
-        AND
-        twr7.satellite_frequency != ''
-        AND
-        CAST(twr7.satellite_frequency AS REAL) < 137
-        --apt.associated_state_name LIKE "%VIR%"
+    awy1.airway_designation = 'V38'
 ORDER BY
-  apt.location_identifier
-,twr7.satellite_frequency_use
---,rem.remark_element_name
-;
+    awy1.airway_point_sequence_number
+    ;
 
---------------------------------------
---All frequencies for a towered airport
---------------------------------------
-SELECT 
-  apt.location_identifier
-  , apt.landing_facility_site_number
-  -- , apt.common_traffic_advisory_frequency_ctaf
-  -- , awos.wx_sensor_type
-  -- , awos.station_frequency
-  , twr1.radio_call_used_by_pilot_to_contact_tower
-  , twr1.radio_call_of_facility_that_furnishes_primary_approach_control
-  , twr3a.frequency
-  , twr3a.frequency_use
-FROM 
-  apt_apt AS apt
-JOIN
-  twr_twr1 AS twr1
-    ON
-      apt.landing_facility_site_number=twr1.landing_facility_site_number
-JOIN
-  twr_twr3a AS twr3a
-    ON
-      apt.location_identifier=twr3a.terminal_communications_facility_identifier
-JOIN
-  awos_awos1 as awos
-    ON
-      apt.landing_facility_site_number=awos.landing_facility_site_number_when_station_located_at_airport
-WHERE
-        apt.location_identifier = 'SFO'
-        AND
-        twr3a.frequency != ''
-        AND
-        CAST(twr3a.frequency AS REAL) < 137
-        --apt.associated_state_name LIKE "%VIR%"
-ORDER BY
-  apt.location_identifier
-,twr3a.frequency_use
---,rem.remark_element_name
-;
+-- --------------------------------------------------------------------------------
+-- --All frequencies for a satellite airport
+-- --------------------------------------------------------------------------------
+-- SELECT 
+--     apt.location_identifier
+--     , apt.landing_facility_site_number
+--     , apt.common_traffic_advisory_frequency_ctaf
+--     , awos.wx_sensor_type
+--     , awos.station_frequency
+--     , apt.unicom_frequency_available_at_the_airport
+--     , twr7.satellite_frequency_use
+--     , twr7.satellite_frequency
+--     , twr1.radio_call_of_facility_that_furnishes_primary_approach_control
+-- 
+-- FROM 
+--     apt_apt AS apt
+-- 
+-- JOIN 
+--     twr_twr7 AS twr7
+--         ON
+--         apt.landing_facility_site_number 
+--         = twr7.satellite_airport_site_number
+-- 
+-- JOIN
+--     twr_twr1 AS twr1
+--         ON
+--         apt.landing_facility_site_number 
+--         = twr1.landing_facility_site_number
+-- 
+-- JOIN
+--     awos_awos1 as awos
+--         ON
+--         apt.landing_facility_site_number
+--         = awos.landing_facility_site_number_when_station_located_at_airport
+-- 
+-- WHERE
+--     apt.location_identifier = 'OFP'
+--         AND
+--     CAST( twr7.satellite_frequency AS REAL) BETWEEN 118 and 137
+-- 
+-- ORDER BY
+--     apt.location_identifier
+--     , twr7.satellite_frequency_use
+-- ;
+
+
 
 --------------------------------------
 --All remarks for a given airport
-      SELECT 
-	apt.location_identifier,
-	rem.remark_element_name,
-	rem.remark_element_name_expanded,
-	rem.remark_text
-      FROM 
-	apt_apt AS apt
-      JOIN 
-	apt_rmk AS rem
-      ON 
-	apt.landing_facility_site_number=rem.landing_facility_site_number
-      WHERE
-        -- apt.location_identifier = 'JYO'
-        apt.associated_state_name LIKE "%VIR%"
-      ORDER BY
-	apt.location_identifier,
-	rem.remark_element_name
-	;
---------------------------------------
+SELECT 
+    apt.location_identifier
+    , rem.remark_element_name
+    , rem.remark_element_name_expanded
+    , rem.remark_text
+FROM 
+    apt_apt AS apt
+JOIN 
+    apt_rmk AS rem
+ON 
+    apt.landing_facility_site_number = rem.landing_facility_site_number
+WHERE
+    -- apt.location_identifier = 'JYO'
+    apt.associated_state_name LIKE "%VIR%"
+ORDER BY
+    apt.location_identifier
+    , rem.remark_element_name
+;
 --------------------------------------
 --All runways and their lengths for a given airport
-      SELECT 
-	apt.location_identifier,
-	rwy.runway_identification,
-	rwy.runway_physical_runway_length_nearest_foot
-      FROM 
-	apt_apt AS apt
-      JOIN 
-	apt_rwy AS rwy
-      ON 
-	apt.landing_facility_site_number=rwy.landing_facility_site_number
-      WHERE
-        apt.location_identifier = 'EGI'
-	--apt.associated_state_name LIKE "%VA%"
+SELECT 
+    apt.location_identifier
+    , rwy.runway_identification
+    , rwy.runway_physical_runway_length_nearest_foot
+FROM 
+    apt_apt AS apt
+JOIN 
+    apt_rwy AS rwy
+ON 
+    apt.landing_facility_site_number=rwy.landing_facility_site_number
+WHERE
+    apt.location_identifier = 'OFP'
+    --apt.associated_state_name LIKE "%VA%"
 --      GROUP BY 
---	apt.location_identifier
-      ORDER BY
-	apt.location_identifier,rwy.runway_identification
-      ;
+    --	apt.location_identifier
+ORDER BY
+    apt.location_identifier,rwy.runway_identification
+;
 --------------------------------------
 --All runways and their lengths for a given airport
-            SELECT 
+SELECT 
     rwy. base_end_identifier
-,rwy.base_latitude
-,rwy.base_longitude
-,rwy.base_runway_end_true_alignment
-,rwy.reciprocal_end_identifier
-,rwy.reciprocal_latitude
-,rwy.reciprocal_longitude
-,rwy.reciprocal_runway_end_true_alignment
-,rwy.runway_identification
-      FROM 
-	apt_apt AS apt
-      JOIN 
-	apt_rwy AS rwy
-      ON 
-	apt.landing_facility_site_number=rwy.landing_facility_site_number
-      WHERE
-        apt.location_identifier = 'RIC'
-	--apt.associated_state_name LIKE "%VA%"
+    , rwy.base_latitude
+    , rwy.base_longitude
+    , rwy.base_runway_end_true_alignment
+    , rwy.reciprocal_end_identifier
+    , rwy.reciprocal_latitude
+    , rwy.reciprocal_longitude
+    , rwy.reciprocal_runway_end_true_alignment
+    , rwy.runway_identification
+FROM 
+    apt_apt AS apt
+JOIN 
+    apt_rwy AS rwy
+ON 
+    apt.landing_facility_site_number=rwy.landing_facility_site_number
+WHERE
+    apt.location_identifier = 'RIC'
+    --apt.associated_state_name LIKE "%VA%"
 --      GROUP BY 
 --	apt.location_identifier
-      ORDER BY
-	apt.location_identifier,rwy.runway_identification
-      ;
+ORDER BY
+    apt.location_identifier,rwy.runway_identification
+;
 
 --------------------------------------
 --All runways and their lengths for a given airport
-      SELECT 
-	apt.location_identifier
-	,rwy.runway_identification
-	,rwy.base_runway_end_true_alignment
-	,rwy.reciprocal_runway_end_true_alignment
-	,base_latitude
-	,base_longitude
-	,reciprocal_latitude
-	,reciprocal_longitude
+SELECT 
+    apt.location_identifier
+    , rwy.runway_identification
+    , rwy.base_runway_end_true_alignment
+    , rwy.reciprocal_runway_end_true_alignment
+    , base_latitude
+    , base_longitude
+    , reciprocal_latitude
+    , reciprocal_longitude
 
-      FROM 
-	apt_apt AS apt
-      JOIN 
-	apt_rwy AS rwy
-      ON 
-	apt.landing_facility_site_number=rwy.landing_facility_site_number
-      WHERE
-        --apt.location_identifier = 'RIC'
-	apt.associated_state_name LIKE "%VIR%"
+FROM 
+    apt_apt AS apt
+JOIN 
+    apt_rwy AS rwy
+ON 
+    apt.landing_facility_site_number=rwy.landing_facility_site_number
+WHERE
+    --apt.location_identifier = 'RIC'
+    apt.associated_state_name LIKE "%VIR%"
 --      GROUP BY 
 --	apt.location_identifier
-      ORDER BY
-	apt.location_identifier,rwy.runway_identification
-      ;
+ORDER BY
+    apt.location_identifier,rwy.runway_identification
+;
 --------------------------------------
 
       SELECT A.LOCATION_IDENTIFIER,R.RUNWAY_END_IDENTIFIER,R.RUNWAY_IDENTIFICATION,R.TYPE_OF_AIRCRAFT_ARRESTING_DEVICE
