@@ -4,6 +4,9 @@ The "spatial56day.db" this creates is used by my Aviation Map project and the
 sqlite database could be directly used in any Electronic Flight Bag (EFB) program.
 See "Sample SQL queries.sql" for some examples of querying this database
 
+A sample spatialite version of the database can be found here: 
+    https://www.dropbox.com/s/j018ph69x9nduv4/data.tar.xz
+
 These instructions are based on using Ubuntu 14.04+
 
 How to get this utility up and running:
