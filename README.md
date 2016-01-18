@@ -1,6 +1,8 @@
-Create sqlite and spatialite databases from the 56-day data provided by the FAA 
+Create sqlite and spatialite databases from the 56-day NASR data freely provided by the FAA 
 
-The "spatial56day.db" this creates is used by the Aviation Map project
+The "spatial56day.db" this creates is used by my Aviation Map project and the 
+sqlite database could be directly used in any Electronic Flight Bag (EFB) program.
+See "Sample SQL queries.sql" for some examples of querying this database
 
 These instructions are based on using Ubuntu 14.04+
 
@@ -35,19 +37,6 @@ How to use these utilities
                     eg: "create_databases.sh 56DySubscription_December_10__2015_-_February_04__2016.zip"
                     
 		Creates the sqlite database, expanding text and creating spatialite geometries.  Then converts to spatialite database.  Also creates airspace spatialite databases
-
-	parseNasr.pl
-		Usage: ./parseNasr.pl -v -e <data directory>
-
-		-v: enable debug output
-		-e: expand text
-		-g: create geometry for spatialite
- 
-Running
-
-        Download the most recent 56 day data from https://nfdc.faa.gov/xwiki/bin/view/NFDC/56+Day+NASR+Subscription
-	
-	run "./create_databases.sh <name of 56 day .zip file>"
 
 
 This software and the data it produces come with no guarantees about accuracy or usefulness whatsoever!  Don't use it when your life may be on the line!
