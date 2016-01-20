@@ -1,60 +1,105 @@
 --------------------------------------------------------------------------------
 --All frequencies, including remotes, for an airport
---The results are currently rather redundant and need to be simplified with 
--- group_concat
+-- Uses Common Table Expressions (CTEs)
 --------------------------------------------------------------------------------
-SELECT 
+WITH 
+    names(landing_facility_site_number, tower,approach, departure, approach_backup, departure_backup, military_call) AS (
+        SELECT
+            twr1.landing_facility_site_number
+            , twr1.radio_call_used_by_pilot_to_contact_tower
+            , twr1.radio_call_of_facility_that_furnishes_primary_approach_control
+            , twr1.radio_call_of_facility_that_furnishes_primary_departure_control
+            , twr1.radio_call_of_facility_that_takes_over_approach_control_when_pr
+            , twr1.radio_call_of_facility_that_takes_over_departure_control_when_p
+            , twr1.radio_call_name_for_military_operations_at_this_airport
+        FROM 
+            twr_twr1 AS twr1
+        ),
+        
+    awos (landing_facility_site_number, awos) AS (
+        SELECT 
+            awos.landing_facility_site_number_when_station_located_at_airport
+            , GROUP_CONCAT( awos.wx_sensor_type || '*' || awos.station_frequency )
+
+        FROM
+            awos_awos1 as awos
+            
+        GROUP BY
+            awos.landing_facility_site_number_when_station_located_at_airport
+        ),
+        
+    local_freqs (terminal_communications_facility_identifier, local_freqs) AS (
+        SELECT
+            twr3a.terminal_communications_facility_identifier
+            , group_concat( twr3a.frequency_use || '*' || twr3a.frequency   )
+
+        FROM 
+            twr_twr3a AS twr3a
+        WHERE
+            (twr3a.frequency IS NULL OR CAST(twr3a.frequency AS REAL) BETWEEN 118 and 137)
+        GROUP BY
+            twr3a.terminal_communications_facility_identifier
+        ),
+        
+    remote_freqs (landing_facility_site_number, remote_freqs) AS (
+        SELECT 
+            twr7.satellite_airport_site_number
+            , GROUP_CONCAT( twr7.satellite_frequency_use || '*' || twr7.satellite_frequency)
+        FROM 
+            twr_twr7 AS twr7
+        WHERE
+            (twr7.satellite_frequency IS NULL OR CAST(twr7.satellite_frequency AS REAL) BETWEEN 118 and 137)
+        GROUP BY
+            twr7.satellite_airport_site_number
+        )
+SELECT
     apt.location_identifier
     , apt.landing_facility_site_number
     , apt.common_traffic_advisory_frequency_ctaf
     , apt.unicom_frequency_available_at_the_airport
-    , awos.wx_sensor_type
-    , awos.station_frequency   
-    , twr1.radio_call_used_by_pilot_to_contact_tower
-    , twr1.radio_call_of_facility_that_furnishes_primary_approach_control
-    , twr3a.frequency
-    , twr3a.frequency_use
-    , twr7.satellite_frequency_use
-    , twr7.satellite_frequency
-
-FROM 
+    , tower
+    , approach
+    , departure
+    , approach_backup
+    , departure_backup
+    , military_call
+    , awos
+    , local_freqs
+    , remote_freqs
+    
+FROM
     apt_apt AS apt
 
-LEFT OUTER JOIN 
-    twr_twr1 AS twr1
+LEFT OUTER JOIN
+    names
         ON
             apt.landing_facility_site_number 
-            = twr1.landing_facility_site_number
+            = names.landing_facility_site_number
 
 LEFT OUTER JOIN
-    twr_twr3a AS twr3a
-        ON
-            apt.location_identifier 
-            = twr3a.terminal_communications_facility_identifier
-            
-LEFT OUTER JOIN 
-    twr_twr7 AS twr7
-        ON
-            apt.landing_facility_site_number = twr7.satellite_airport_site_number
-
-LEFT OUTER JOIN 
-    awos_awos1 as awos
+    awos
         ON
             apt.landing_facility_site_number 
-            = awos.landing_facility_site_number_when_station_located_at_airport
+            = awos.landing_facility_site_number
+
+LEFT OUTER JOIN
+    local_freqs
+        ON
+            apt.location_identifier
+            = local_freqs.terminal_communications_facility_identifier
+
+LEFT OUTER JOIN
+    remote_freqs
+        ON
+            apt.landing_facility_site_number 
+            = remote_freqs.landing_facility_site_number
+
 WHERE
-    apt.location_identifier IN ('LAX' , 'W94' , 'OFP' , 'RIC' , 'SAC' , 'VCB' , 'JYO' , 'TGI')
-        AND
-    (twr3a.frequency IS NULL OR CAST(twr3a.frequency AS REAL) BETWEEN 118 and 137)
-        AND
-    (twr7.satellite_frequency IS NULL OR CAST(twr7.satellite_frequency AS REAL) BETWEEN 118 and 137)
--- --     --apt.associated_state_name LIKE "%VIR%"
+    apt.location_identifier IN ('SAC', 'VCB','OFP','RIC', 'JYO')
 
 ORDER BY
     apt.location_identifier
-    , twr3a.frequency_use
 ;
-
 --------------------------------------------------------------------------------
 --Individual segments in an airway
 --  Won't work if sequence numbers aren't incrementing by 10

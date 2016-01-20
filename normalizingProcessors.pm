@@ -31,6 +31,9 @@ $VERSION = 1.00;
 @EXPORT  = qw( normalize_TWR_TWR3   );
 
 sub normalize_TWR_TWR3 {
+
+    #Make a new table with separate row for each
+    #frequency/frequency_use pair for each airport
     my ( $hashRef, $dbh ) =
       validate_pos( @_, { type => HASHREF }, { type => HASHREF } );
 
@@ -42,9 +45,12 @@ sub normalize_TWR_TWR3 {
     for ( my $i = 1 ; $i < 10 ; $i++ ) {
         my $frequency = $hashRef->{
             "frequencys_for_master_airport_use_only_and_sectorization_$i"};
+
         my $frequency_not_truncated = $hashRef->{
             "frequencys_for_master_airport_use_only_and_sectorization_not_$i"};
+
         my $frequency_use = $hashRef->{"frequency_use_$i"};
+
         my $terminal_communications_facility_identifier =
           $hashRef->{terminal_communications_facility_identifier};
 
