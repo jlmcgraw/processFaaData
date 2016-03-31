@@ -614,7 +614,11 @@ AFF => {
   },
 
   # cdr    => {},
+
   COM => {
+    #     communications_outlet_frequencies_in_16_fields_of_9_characters:144
+    #     operational_hours_in_3_fields_of_20_characters_each:60
+    #     charts_in_4_fields_of_2_characters_each:8
     'COM' => '
     communications_outlet_ident:4
     communications_outlet_type:7
@@ -632,17 +636,37 @@ AFF => {
     communications_outlet_latitude:14
     communications_outlet_longitude:14
     communications_outlet_call:26
-    communications_outlet_frequencies_in_16_fields_of_9_characters:144
+    communications_outlet_frequencies_1:9
+    communications_outlet_frequencies_2:9
+    communications_outlet_frequencies_3:9
+    communications_outlet_frequencies_4:9
+    communications_outlet_frequencies_5:9
+    communications_outlet_frequencies_6:9
+    communications_outlet_frequencies_7:9
+    communications_outlet_frequencies_8:9
+    communications_outlet_frequencies_9:9
+    communications_outlet_frequencies_10:9
+    communications_outlet_frequencies_11:9
+    communications_outlet_frequencies_12:9
+    communications_outlet_frequencies_13:9
+    communications_outlet_frequencies_14:9
+    communications_outlet_frequencies_15:9
+    communications_outlet_frequencies_16:9
     fss_ident:4
     fss_ident_fss_name:30
     alternate_fss_ident:4
     alternate_fss_ident_alternate_fss_name:30
-    operational_hours_in_3_fields_of_20_characters_each:60
+    operational_hours_1:20
+    operational_hours_2:20
+    operational_hours_3:20
     owner_code:1
     owner_name:69
     operator_code:1
     operator_name:69
-    charts_in_4_fields_of_2_characters_each:8
+    charts_1:2
+    charts_2:2
+    charts_3:2
+    charts_4:2
     standard_time_zone:2
     status:20
     status_date:11
@@ -1065,13 +1089,33 @@ AFF => {
     ',
   },
   MTR => {
+#   artcc_ident_20_occurences_of_4_character_ident:80
     'MTR1' => '
         record_type_indicator:4
     route_type:3
     route_identifier:5
     publication_effective_date_yyyymmdd:8
     faa_region_code:3
-    artcc_ident_20_occurences_of_4_character_ident:80
+    artcc_ident_1:4
+    artcc_ident_2:4
+    artcc_ident_3:4
+    artcc_ident_4:4
+    artcc_ident_5:4
+    artcc_ident_6:4
+    artcc_ident_7:4
+    artcc_ident_8:4
+    artcc_ident_9:4
+    artcc_ident_10:4
+    artcc_ident_11:4
+    artcc_ident_12:4
+    artcc_ident_13:4
+    artcc_ident_14:4
+    artcc_ident_15:4
+    artcc_ident_16:4
+    artcc_ident_17:4
+    artcc_ident_18:4
+    artcc_ident_19:4
+    artcc_ident_20:4
     all_flight_service_station_fss_idents_within_150_nautical_miles:160
     times_of_use_text_information:50
     blanks:201

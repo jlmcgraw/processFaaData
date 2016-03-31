@@ -126,14 +126,14 @@ SELECT InitSpatialMetadata(1);
                                 CAST (longitude AS DOUBLE),
                                 CAST (latitude AS DOUBLE),
                                 4326);
-        --ATS3
-        SELECT AddGeometryColumn( 'ATS_ATS3' , 'geometry' , 4326, 'POINT');
-        SELECT CreateSpatialIndex( 'ATS_ATS3' , 'geometry'  );
-        UPDATE ATS_ATS3
-                SET geometry = MakePoint(
-                                CAST (longitude AS DOUBLE),
-                                CAST (latitude AS DOUBLE),
-                                4326);
+--         --ATS3
+--         SELECT AddGeometryColumn( 'ATS_ATS3' , 'geometry' , 4326, 'POINT');
+--         SELECT CreateSpatialIndex( 'ATS_ATS3' , 'geometry'  );
+--         UPDATE ATS_ATS3
+--                 SET geometry = MakePoint(
+--                                 CAST (longitude AS DOUBLE),
+--                                 CAST (latitude AS DOUBLE),
+--                                 4326);
 --AWOS Stations
         SELECT AddGeometryColumn( 'AWOS_AWOS1' , 'geometry' , 4326, 'POINT');
         SELECT CreateSpatialIndex( 'AWOS_AWOS1' , 'geometry'  );
@@ -336,7 +336,10 @@ SELECT InitSpatialMetadata(1);
             mtr_mtr5.route_type || mtr_mtr5.route_identifier   AS unique_id
             , mtr_mtr5.route_identifier
             , mtr_mtr5.route_type
-            , 'linestring( ' || GROUP_CONCAT(mtr_mtr5.longitude || ' ' || mtr_mtr5.latitude) || ' )' AS geometry
+            , 'linestring( ' || GROUP_CONCAT(mtr_mtr5.longitude 
+                                            || ' ' 
+                                            || mtr_mtr5.latitude) 
+                    || ' )' AS geometry
         FROM
             mtr_mtr5
         GROUP BY
@@ -358,85 +361,95 @@ SELECT InitSpatialMetadata(1);
             ;
 
 --Airway segments
---First create a table
-        CREATE TABLE
-          AWY_AWYSEGMENTS (airway_designation
-              , airway_type
-              , airway_point_sequence_number
-              , navaid_facility_fix_name
-              , point_to_point_minimum_enroute_altitude_mea
-              , navaid_facility_fix_latitude
-              , navaid_facility_fix_longitude
-              , navaid_facility_fix_latitude2
-              , navaid_facility_fix_longitude2);
+    --First create a table
+    CREATE TABLE
+        AWY_AWYSEGMENTS (airway_designation
+            , airway_type
+            , airway_point_sequence_number
+            , navaid_facility_fix_name
+            , point_to_point_minimum_enroute_altitude_mea
+            , navaid_facility_fix_latitude
+            , navaid_facility_fix_longitude
+            , navaid_facility_fix_latitude2
+            , navaid_facility_fix_longitude2
+            );
 
 
-        --use a transaction to ensure it all gets done (or nothing is changed)
-            -- begin transaction
+    --use a transaction to ensure it all gets done (or nothing is changed)
+        -- begin transaction
 
-        --Insert data into that new table with rows consisting of data from two separate tables (AWY1 and AWY2)
-        INSERT INTO AWY_AWYSEGMENTS
-          SELECT
-            awy1.airway_designation
-            , awy1.airway_type
-            , awy1.airway_point_sequence_number
-            , awy2.navaid_facility_fix_name
-            , awy1.point_to_point_minimum_enroute_altitude_mea
-            , awy2.latitude
-            , awy2.longitude
-            , awy2a.latitude
-            , awy2a.longitude
-          FROM
-            awy_awy1 AS awy1
-          JOIN
-           awy_awy2 AS awy2
-            ON
-              awy1.airway_point_sequence_number = awy2.airway_point_sequence_number
-                AND
-              awy1.airway_designation = awy2.airway_designation
-                AND
-              awy1.airway_type = awy2.airway_type
-          JOIN
-           awy_awy2 AS awy2a
-            ON
-              CAST (awy1.airway_point_sequence_number AS REAL) + 10 = CAST(awy2a.airway_point_sequence_number  AS REAL)
-                AND
-              awy1.airway_designation = awy2a.airway_designation
-                AND
-              awy1.airway_type = awy2a.airway_type
-
-          WHERE
-              -- awy1.airway_designation = 'J1'
-              -- AND
-              awy2.longitude != ''
-                  AND
-              awy2.latitude != ''
-                  AND
-              awy2.longitude != '0'
-                  AND
-              awy2.latitude != '0'
-                  AND
-              awy2a.longitude != ''
-                  AND
-              awy2a.latitude != ''
-                  AND
-              awy2a.longitude != '0'
-                  AND
-              awy2a.latitude != '0'
-          ORDER BY
-            awy1.airway_point_sequence_number
-              ;
-
-        -- Make some lines from the segments
+    --Insert data into that new table with rows consisting of data from two separate tables (AWY1 and AWY2)
+    INSERT INTO AWY_AWYSEGMENTS
         SELECT
-          AddGeometryColumn( 'AWY_AWYSEGMENTS' , 'airwayGeom' , 4326, 'LINESTRING');
+        awy1.airway_designation
+        , awy1.airway_type
+        , awy1.airway_point_sequence_number
+        , awy2.navaid_facility_fix_name
+        , awy1.point_to_point_minimum_enroute_altitude_mea
+        , awy2.latitude
+        , awy2.longitude
+        , awy2a.latitude
+        , awy2a.longitude
+        FROM
+        awy_awy1 AS awy1
+        JOIN
+        awy_awy2 AS awy2
+        ON
+            awy1.airway_point_sequence_number = awy2.airway_point_sequence_number
+            AND
+            awy1.airway_designation = awy2.airway_designation
+            AND
+            awy1.airway_type = awy2.airway_type
+        JOIN
+        awy_awy2 AS awy2a
+        ON
+            CAST (awy1.airway_point_sequence_number AS REAL) + 10 = CAST(awy2a.airway_point_sequence_number  AS REAL)
+            AND
+            awy1.airway_designation = awy2a.airway_designation
+            AND
+            awy1.airway_type = awy2a.airway_type
 
-        SELECT
-          CreateSpatialIndex( 'AWY_AWYSEGMENTS' , 'airwayGeom' );
+        WHERE
+            -- awy1.airway_designation = 'J1'
+            -- AND
+            awy2.longitude != ''
+                AND
+            awy2.latitude != ''
+                AND
+            awy2.longitude != '0'
+                AND
+            awy2.latitude != '0'
+                AND
+            awy2a.longitude != ''
+                AND
+            awy2a.latitude != ''
+                AND
+            awy2a.longitude != '0'
+                AND
+            awy2a.latitude != '0'
+        ORDER BY
+        awy1.airway_point_sequence_number
+            ;
+            
+    -- Make some lines from the segments
+    SELECT
+        AddGeometryColumn( 'AWY_AWYSEGMENTS' , 'airwayGeom' , 4326, 'LINESTRING');
 
-        UPDATE AWY_AWYSEGMENTS
-                SET
-                  airwayGeom = LineFromText('LINESTRING('|| navaid_facility_fix_longitude ||' '|| navaid_facility_fix_latitude ||','|| navaid_facility_fix_longitude2 ||' '|| navaid_facility_fix_latitude2 ||')', 4326)
-                ;
+    SELECT
+        CreateSpatialIndex( 'AWY_AWYSEGMENTS' , 'airwayGeom' );
+
+    UPDATE AWY_AWYSEGMENTS
+            SET
+                airwayGeom = LineFromText('LINESTRING( '
+                                        || navaid_facility_fix_longitude 
+                                        ||' '
+                                        || navaid_facility_fix_latitude 
+                                        ||','
+                                        || navaid_facility_fix_longitude2 
+                                        ||' '
+                                        || navaid_facility_fix_latitude2 
+                                        ||' )'
+                                        , 4326)
+            ;
 
 VACUUM;

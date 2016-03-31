@@ -66,11 +66,11 @@ sub geometry_OBSTACLE_OBSTACLE {
     my ($hashRef) = validate_pos( @_, { type => HASHREF } );
 
     #Calculate the decimal representation of lon/lat
-    my $latitude = &coordinatetodecimal2(
+    my $latitude = &coordinateToDecimal2(
         $hashRef->{latitude_degrees}, $hashRef->{latitude_minutes},
         $hashRef->{latitude_seconds}, $hashRef->{latitude_hemisphere},
     );
-    my $longitude = &coordinatetodecimal2(
+    my $longitude = &coordinateToDecimal2(
         $hashRef->{longitude_degrees}, $hashRef->{longitude_minutes},
         $hashRef->{longitude_seconds}, $hashRef->{longitude_hemisphere},
     );
@@ -88,10 +88,10 @@ sub geometry_AFF_AFF1 {
 
     # #Calculate the decimal representation of lon/lat
     $hashRef->{latitude} =
-      &coordinatetodecimal( $hashRef->{site_latitude_formatted} );
+      &coordinateToDecimal( $hashRef->{site_latitude_formatted} );
 
     $hashRef->{longitude} =
-      &coordinatetodecimal( $hashRef->{site_longitude_formatted} );
+      &coordinateToDecimal( $hashRef->{site_longitude_formatted} );
 }
 
 sub geometry_AFF_AFF3 {
@@ -101,10 +101,10 @@ sub geometry_AFF_AFF3 {
 
     # #Calculate the decimal representation of lon/lat
     $hashRef->{latitude} =
-      &coordinatetodecimal( $hashRef->{latitude_of_the_airport_formatted} );
+      &coordinateToDecimal( $hashRef->{latitude_of_the_airport_formatted} );
 
     $hashRef->{longitude} =
-      &coordinatetodecimal( $hashRef->{longitude_of_the_airport_formatted} );
+      &coordinateToDecimal( $hashRef->{longitude_of_the_airport_formatted} );
 }
 
 sub geometry_ARB_ARB {
@@ -112,9 +112,9 @@ sub geometry_ARB_ARB {
 
     #Calculate the decimal representation of lon/lat
     my $latitude =
-      &coordinatetodecimal( $hashRef->{latitude_of_the_boundary_point}, );
+      &coordinateToDecimal( $hashRef->{latitude_of_the_boundary_point}, );
     my $longitude =
-      &coordinatetodecimal( $hashRef->{longitude_of_the_boundary_point} );
+      &coordinateToDecimal( $hashRef->{longitude_of_the_boundary_point} );
 
     # #and save in the hash as a POINT
     # $hashRef->{geometry} = "POINT(" . $longitude . " " . $latitude . ")";
@@ -128,9 +128,9 @@ sub geometry_ATS_ATS2 {
 
     #Calculate the decimal representation of lon/lat
     my $latitude =
-      &coordinatetodecimal( $hashRef->{navaid_facility_fix_latitude}, );
+      &coordinateToDecimal( $hashRef->{navaid_facility_fix_latitude}, );
     my $longitude =
-      &coordinatetodecimal( $hashRef->{navaid_facility_fix_longitude} );
+      &coordinateToDecimal( $hashRef->{navaid_facility_fix_longitude} );
 
     # #and save in the hash as a POINT
     # $hashRef->{geometry} = "POINT(" . $longitude . " " . $latitude . ")";
@@ -144,9 +144,9 @@ sub geometry_ATS_ATS3 {
 
     #Calculate the decimal representation of lon/lat
     my $latitude =
-      &coordinatetodecimal( $hashRef->{navaid_facility_latitude}, );
+      &coordinateToDecimal( $hashRef->{navaid_facility_latitude}, );
     my $longitude =
-      &coordinatetodecimal( $hashRef->{navaid_facility_longitude} );
+      &coordinateToDecimal( $hashRef->{navaid_facility_longitude} );
 
     # #and save in the hash as a POINT
     # $hashRef->{geometry} = "POINT(" . $longitude . " " . $latitude . ")";
@@ -160,9 +160,9 @@ sub geometry_AWY_AWY2 {
 
     #Calculate the decimal representation of lon/lat
     my $latitude =
-      &coordinatetodecimal( $hashRef->{navaid_facility_fix_latitude}, );
+      &coordinateToDecimal( $hashRef->{navaid_facility_fix_latitude}, );
     my $longitude =
-      &coordinatetodecimal( $hashRef->{navaid_facility_fix_longitude} );
+      &coordinateToDecimal( $hashRef->{navaid_facility_fix_longitude} );
 
     # #and save in the hash as a POINT
     # $hashRef->{geometry} = "POINT(" . $longitude . " " . $latitude . ")";
@@ -176,9 +176,9 @@ sub geometry_AWY_AWY3 {
 
     #Calculate the decimal representation of lon/lat
     my $latitude =
-      &coordinatetodecimal( $hashRef->{navaid_facility_latitude}, );
+      &coordinateToDecimal( $hashRef->{navaid_facility_latitude}, );
     my $longitude =
-      &coordinatetodecimal( $hashRef->{navaid_facility_longitude} );
+      &coordinateToDecimal( $hashRef->{navaid_facility_longitude} );
 
     # #and save in the hash as a POINT
     # $hashRef->{geometry} = "POINT(" . $longitude . " " . $latitude . ")";
@@ -195,9 +195,9 @@ sub geometry_COM_COM {
 
     #Calculate the decimal representation of lon/lat
     my $latitude =
-      &coordinatetodecimal( $hashRef->{communications_outlet_latitude}, );
+      &coordinateToDecimal( $hashRef->{communications_outlet_latitude}, );
     my $longitude =
-      &coordinatetodecimal( $hashRef->{communications_outlet_longitude} );
+      &coordinateToDecimal( $hashRef->{communications_outlet_longitude} );
 
     #and save in the hash
 
@@ -215,16 +215,16 @@ sub geometry_FSS_FSS {
 
     #Calculate the decimal representation of lon/lat
     my $latitude =
-      &coordinatetodecimal( $hashRef->{airport_latitude_fss_on_arpt}, );
+      &coordinateToDecimal( $hashRef->{airport_latitude_fss_on_arpt}, );
     my $longitude =
-      &coordinatetodecimal( $hashRef->{airport_longitude_fss_on_arpt} );
+      &coordinateToDecimal( $hashRef->{airport_longitude_fss_on_arpt} );
 
     my $latitudeNotOnAirport =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{latitude_when_fss_is_not_on_airport_see_f6},
       );
     my $longitudeNotOnAirport =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{longitude_when_fss_is_not_on_airport_see_f6} );
 
     if ( $latitude && $longitude ) {
@@ -248,11 +248,11 @@ sub geometry_HARFIX_HARFIX {
 
     # #Calculate the decimal representation of lon/lat
     # my $latitude =
-    # &coordinatetodecimal(
+    # &coordinateToDecimal(
     # $hashRef->{airport_reference_point_latitude_formatted},
     # );
     # my $longitude =
-    # &coordinatetodecimal(
+    # &coordinateToDecimal(
     # $hashRef->{airport_reference_point_longitude_formatted} );
 
     # # #and save in the hash as a POINT
@@ -268,19 +268,19 @@ sub geometry_HPF_HP1 {
 
     # #Calculate the decimal representation of lon/lat
     $hashRef->{latitude_of_the_associated_fix} =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{latitude_of_the_associated_fix_dd_mm_ss_sssn} );
 
     $hashRef->{longitude_of_the_associated_fix} =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{longitude_of_the_associated_fix_ddd_mm_ss_sssw} );
 
     $hashRef->{latitude_of_the_associated_navaid} =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{latitude_of_the_associated_navaid_dd_mm_ss_sssn} );
 
     $hashRef->{longitude_of_the_associated_navaid} =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{longitude_of_the_associated_navaid_ddd_mm_ss_sssw} );
 
 }
@@ -291,10 +291,10 @@ sub geometry_ILS_ILS2 {
 
     #Calculate the decimal representation of lon/lat
     my $latitude =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{latitude_of_localizer_antenna_formatted} );
     my $longitude =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{longitude_of_localizer_antenna_formatted} );
 
     $hashRef->{latitude}  = $latitude;
@@ -307,10 +307,10 @@ sub geometry_ILS_ILS3 {
 
     #Calculate the decimal representation of lon/lat
     my $latitude =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{latitude_of_glide_slope_transmitter_antenna_formatted} );
     my $longitude =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{longitude_of_glide_slope_transmitter_antenna_formatted} );
 
     $hashRef->{latitude}  = $latitude;
@@ -322,10 +322,10 @@ sub geometry_ILS_ILS4 {
 
     #Calculate the decimal representation of lon/lat
     my $latitude =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{latitude_of_dme_transponder_antenna_formatted} );
     my $longitude =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{longitude_of_dme_transponder_antenna_formatted} );
 
     $hashRef->{latitude}  = $latitude;
@@ -337,9 +337,9 @@ sub geometry_ILS_ILS5 {
 
     #Calculate the decimal representation of lon/lat
     my $latitude =
-      &coordinatetodecimal( $hashRef->{latitude_of_marker_beacon_formatted} );
+      &coordinateToDecimal( $hashRef->{latitude_of_marker_beacon_formatted} );
     my $longitude =
-      &coordinatetodecimal( $hashRef->{longitude_of_marker_beacon_formatted} );
+      &coordinateToDecimal( $hashRef->{longitude_of_marker_beacon_formatted} );
 
     $hashRef->{latitude}  = $latitude;
     $hashRef->{longitude} = $longitude;
@@ -365,11 +365,11 @@ sub geometry_NATFIX_NATFIX {
 
     # #Calculate the decimal representation of lon/lat
     # my $latitude =
-    # &coordinatetodecimal(
+    # &coordinateToDecimal(
     # $hashRef->{airport_reference_point_latitude_formatted},
     # );
     # my $longitude =
-    # &coordinatetodecimal(
+    # &coordinateToDecimal(
     # $hashRef->{airport_reference_point_longitude_formatted} );
 
     # # #and save in the hash as a POINT
@@ -396,7 +396,7 @@ sub geometry_SSD_SSD {
         my $latDeclination = substr( $latitude, 0, 1 );
 
         $latitude =
-          coordinatetodecimal2( $latD, $latM, $latS, $latDeclination );
+          coordinateToDecimal2( $latD, $latM, $latS, $latDeclination );
 
         my $lonD = substr( $longitude, 1, 3 );
         my $lonM = substr( $longitude, 4, 2 );
@@ -405,7 +405,7 @@ sub geometry_SSD_SSD {
         my $lonDeclination = substr( $longitude, 0, 1 );
 
         $longitude =
-          coordinatetodecimal2( $lonD, $lonM, $lonS, $lonDeclination );
+          coordinateToDecimal2( $lonD, $lonM, $lonS, $lonDeclination );
     }
 
     # 5614486N 13438533W
@@ -431,7 +431,7 @@ sub geometry_STARDP_STARDP {
         my $latS = substr( $latitude, 5, 2 ) . "." . substr( $latitude, 7, 1 );
 
         $latitude =
-          coordinatetodecimal2( $latD, $latM, $latS, $latDeclination );
+          coordinateToDecimal2( $latD, $latM, $latS, $latDeclination );
 
         my $lonDeclination = substr( $longitude, 0, 1 );
         my $lonD           = substr( $longitude, 1, 3 );
@@ -440,7 +440,7 @@ sub geometry_STARDP_STARDP {
           substr( $longitude, 6, 2 ) . "." . substr( $longitude, 8, 1 );
 
         $longitude =
-          coordinatetodecimal2( $lonD, $lonM, $lonS, $lonDeclination );
+          coordinateToDecimal2( $lonD, $lonM, $lonS, $lonDeclination );
 
     }
 
@@ -455,29 +455,29 @@ sub geometry_TWR_TWR1 {
 
     #Airport Reference Point
     $hashRef->{airport_reference_point_latitude} =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{airport_reference_point_latitude_formatted} );
 
     $hashRef->{airport_reference_point_longitude} =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{airport_reference_point_longitude_formatted} );
 
     #Airport Surveillance Radar
     $hashRef->{airport_surveillance_radar_latitude} =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{airport_surveillance_radar_latitude_formatted} );
 
     $hashRef->{airport_surveillance_radar_longitude} =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{airport_surveillance_radar_longitude_formatted} );
 
     #Direction Finding Antenna
     $hashRef->{latitude_of_direction_finding_antenna} =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{latitude_of_direction_finding_antenna_formatted} );
 
     $hashRef->{longitude_of_direction_finding_antenna} =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{longitude_of_direction_finding_antenna_formatted} );
 }
 
@@ -486,9 +486,9 @@ sub geometry_TWR_TWR7 {
     my ($hashRef) = validate_pos( @_, { type => HASHREF } );
 
     $hashRef->{airport_latitude} =
-      &coordinatetodecimal( $hashRef->{airport_latitude_formatted} );
+      &coordinateToDecimal( $hashRef->{airport_latitude_formatted} );
     $hashRef->{airport_longitude} =
-      &coordinatetodecimal( $hashRef->{airport_longitude_formatted} );
+      &coordinateToDecimal( $hashRef->{airport_longitude_formatted} );
 }
 
 sub geometry_APT_APT {
@@ -499,11 +499,11 @@ sub geometry_APT_APT {
 
     #Calculate the decimal representation of lon/lat
     my $latitude =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{airport_reference_point_latitude_formatted},
       );
     my $longitude =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{airport_reference_point_longitude_formatted} );
 
     # #and save in the hash as a POINT
@@ -521,32 +521,32 @@ sub geometry_APT_RWY {
 
     #Calculate the decimal representation of lon/lat
     my $base_latitude =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{base_latitude_of_physical_runway_end_formatted} );
     my $base_longitude =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{base_longitude_of_physical_runway_end_formatted} );
 
     my $reciprocal_latitude =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{reciprocal_latitude_of_physical_runway_end_formatted} );
     my $reciprocal_longitude =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{reciprocal_longitude_of_physical_runway_end_formatted} );
 
     #Displaced threshold endpoints
     my $base_displaced_threshold_latitude =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{base_latitude_at_displaced_threshold_formatted} );
     my $base_displaced_threshold_longitude =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{base_longitude_at_displaced_threshold_formatted} );
 
     my $reciprocal_displaced_threshold_latitude =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{reciprocal_latitude_at_displaced_threshold_formatted} );
     my $reciprocal_displaced_threshold_longitude =
-      &coordinatetodecimal(
+      &coordinateToDecimal(
         $hashRef->{reciprocal_longitude_at_displaced_threshold_formatted} );
 
     # #and save in the hash as a POINT
@@ -581,9 +581,9 @@ sub geometry_AWOS_AWOS1 {
 
     #Calculate the decimal representation of lon/lat
     my $latitude =
-      &coordinatetodecimal( $hashRef->{station_latitude_dd_mm_ss_ssssh}, );
+      &coordinateToDecimal( $hashRef->{station_latitude_dd_mm_ss_ssssh}, );
     my $longitude =
-      &coordinatetodecimal( $hashRef->{station_longitude_ddd_mm_ss_ssssh} );
+      &coordinateToDecimal( $hashRef->{station_longitude_ddd_mm_ss_ssssh} );
 
     # #and save in the hash as a POINT
     # $hashRef->{geometry} = "POINT(" . $longitude . " " . $latitude . ")";
@@ -600,9 +600,9 @@ sub geometry_FIX_FIX1 {
 
     #Calculate the decimal representation of lon/lat
     my $latitude =
-      &coordinatetodecimal( $hashRef->{geographical_latitude_of_the_fix}, );
+      &coordinateToDecimal( $hashRef->{geographical_latitude_of_the_fix}, );
     my $longitude =
-      &coordinatetodecimal( $hashRef->{geographical_longitude_of_the_fix} );
+      &coordinateToDecimal( $hashRef->{geographical_longitude_of_the_fix} );
 
     # #and save in the hash as a POINT
     # $hashRef->{geometry} = "POINT(" . $longitude . " " . $latitude . ")";
@@ -619,9 +619,9 @@ sub geometry_NAV_NAV1 {
 
     #Calculate the decimal representation of lon/lat
     my $latitude =
-      &coordinatetodecimal( $hashRef->{navaid_latitude_formatted}, );
+      &coordinateToDecimal( $hashRef->{navaid_latitude_formatted}, );
     my $longitude =
-      &coordinatetodecimal( $hashRef->{navaid_longitude_formatted} );
+      &coordinateToDecimal( $hashRef->{navaid_longitude_formatted} );
 
     # #and save in the hash as a POINT
     # $hashRef->{geometry} = "POINT(" . $longitude . " " . $latitude . ")";
@@ -637,8 +637,8 @@ sub geometry_PJA_PJA1 {
     my ($hashRef) = validate_pos( @_, { type => HASHREF } );
 
     #Calculate the decimal representation of lon/lat
-    my $latitude  = &coordinatetodecimal( $hashRef->{pja_latitude_formatted}, );
-    my $longitude = &coordinatetodecimal( $hashRef->{pja_longitude_formatted} );
+    my $latitude  = &coordinateToDecimal( $hashRef->{pja_latitude_formatted}, );
+    my $longitude = &coordinateToDecimal( $hashRef->{pja_longitude_formatted} );
 
     # #and save in the hash as a POINT
     # $hashRef->{geometry} = "POINT(" . $longitude . " " . $latitude . ")";
@@ -664,7 +664,7 @@ sub geometry_WXL_WXL {
         my $latDeclination = substr( $latitude, 7, 1 );
 
         $latitude =
-          coordinatetodecimal2( $latD, $latM, $latS, $latDeclination );
+          coordinateToDecimal2( $latD, $latM, $latS, $latDeclination );
 
         my $lonD = substr( $longitude, 0, 3 );
         my $lonM = substr( $longitude, 3, 2 );
@@ -673,7 +673,7 @@ sub geometry_WXL_WXL {
         my $lonDeclination = substr( $longitude, 8, 1 );
 
         $longitude =
-          coordinatetodecimal2( $lonD, $lonM, $lonS, $lonDeclination );
+          coordinateToDecimal2( $lonD, $lonM, $lonS, $lonDeclination );
     }
 
     # 5614486N 13438533W

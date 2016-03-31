@@ -16,7 +16,7 @@
 
 package processFaaData;
 
-use 5.010;
+use v5.12.0;
 use strict;
 use warnings;
 
@@ -28,11 +28,9 @@ use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 $VERSION = 1.00;
 @ISA     = qw(Exporter);
 @EXPORT =
-  qw(trim rtrim ltrim coordinatetodecimal coordinatetodecimal2 coordinateToDecimal3 is_vhf coordinateToDecimalCifpFormat);
+  qw(trim rtrim ltrim coordinateToDecimal coordinateToDecimal2 coordinateToDecimal3 is_vhf coordinateToDecimalCifpFormat);
 
-#@EXPORT_OK   = qw(rtrim ltrim coordinatetodecimal);
-
-my $debug = 0;
+#@EXPORT_OK   = qw(rtrim ltrim coordinateToDecimal);
 
 #sub trim {
 #    my @out = @_;
@@ -86,60 +84,70 @@ sub is_vhf($) {
 
 }
 
-sub coordinatetodecimal {
+sub coordinateToDecimal {
 
     # my ($coordinate) = @_;
     #Validate and set input parameters to this function
     my ($coordinate) = validate_pos( @_, { type => SCALAR } );
-    my ( $deg, $min, $sec, $signeddegrees, $declination );
 
     #Remove any whitespace
     $coordinate =~ s/\s//g;
-
-    $declination = substr( $coordinate, -1, 1 );
-
-    return "0" if !( $declination =~ /[NSEW]/ );
-
-    $coordinate =~ m/^(\d{1,3})-/;
-
-    #print $1;
-    $deg = $1 / 1;
-    $coordinate =~ m/-(\d{2})-/;
-
-    #print $1;
-    $min = $1 / 60;
-    $coordinate =~ m/-(\d{2}\.\d+)/;
-
-    #print $1;
-    $sec = $1 / 3600;
-
-    $signeddegrees = ( $deg + $min + $sec );
-
-    if ( ( $declination eq "S" ) || ( $declination eq "W" ) ) {
-        $signeddegrees = -($signeddegrees);
+    
+    my ( $deg, $min, $sec, $declination ) =
+      $coordinate =~ m/^ \s* (\d+) - (\d+) - ([\d.]+) ([NESW]) \s* $/ix;
+      
+    unless ( defined $deg
+        && defined $min
+        && defined $sec
+        && defined $declination )
+    {
+        # say "Deg: $deg, Min:$min, Sec:$sec, Decl:$declination";
+        #die "Error converting coordinate '$coordinate' to decimal in coordinateToDecimal3";
+        return 0;
     }
+    
+    if ( $declination !~ /[NSEW]/i ) {
+        die "Bad declination parameter: $declination";
+    }
+    
+    $deg = $deg / 1;
+    $min = $min / 60;
+    $sec = $sec / 3600;
+    my $signedDegrees = ( $deg + $min + $sec );
 
     given ($declination) {
-        when (/NS/) {
+        when (/[SW]/) {
+            $signedDegrees = -($signedDegrees);
+#             say "coordinateToDecimal negative declination";
+            continue;
+        }
+
+        when (/N|S/) {
 
             #Latitude is invalid if less than -90  or greater than 90
-            $signeddegrees = "0" if ( abs($signeddegrees) > 90 );
+            if ( abs($signedDegrees) > 90 ) {
+                die "$signedDegrees is out of valid range for latitude";
+                $signedDegrees = 0;
+            }
         }
-        when (/EW/) {
+        when (/E|W/) {
 
             #Longitude is invalid if less than -180 or greater than 180
-            $signeddegrees = "0" if ( abs($signeddegrees) > 180 );
+            if ( abs($signedDegrees) > 180 ) {
+                die "$signedDegrees is out of valid range for longitude";
+                $signedDegrees = 0;
+            }
         }
         default {
         }
 
     }
-    print "Coordinate: $coordinate to $signeddegrees\n"        if $debug;
-    print "Deg: $deg, Min:$min, Sec:$sec, Decl:$declination\n" if $debug;
-    return ($signeddegrees);
+    print "Coordinate: $coordinate to $signedDegrees\n"        if $main::debug;
+    print "Deg: $deg, Min:$min, Sec:$sec, Decl:$declination\n" if $main::debug;
+    return ($signedDegrees);
 }
 
-sub coordinatetodecimal2 {
+sub coordinateToDecimal2 {
 
     #Validate and set input parameters to this function
     my ( $deg, $min, $sec, $declination ) = validate_pos(
@@ -153,8 +161,8 @@ sub coordinatetodecimal2 {
 
     my $signedDegrees;
 
-    if ( !$declination =~ /[NSEW]/ ) {
-        say "Bad declination parameter: $declination";
+    if ( !$declination =~ /[NSEW]/i ) {
+        die "Bad declination parameter: $declination";
         return 0;
     }
 
@@ -167,15 +175,17 @@ sub coordinatetodecimal2 {
     $signedDegrees = ( $deg + $min + $sec );
 
     given ($declination) {
-        when (/S|W/) {
+        when (/[SW]/) {
             $signedDegrees = -($signedDegrees);
+#              say "coordinateToDecimal2 negative declination";
+            continue;
         }
 
         when (/N|S/) {
 
             #Latitude is invalid if less than -90  or greater than 90
             if ( abs($signedDegrees) > 90 ) {
-                say "$signedDegrees is out of valid range for latitude";
+                die "$signedDegrees is out of valid range for latitude";
                 $signedDegrees = 0;
             }
         }
@@ -183,7 +193,7 @@ sub coordinatetodecimal2 {
 
             #Longitude is invalid if less than -180 or greater than 180
             if ( abs($signedDegrees) > 180 ) {
-                say "$signedDegrees is out of valid range for longitude";
+                die "$signedDegrees is out of valid range for longitude";
                 $signedDegrees = 0;
             }
         }
@@ -204,7 +214,7 @@ sub coordinateToDecimal3 {
     my ( $deg, $min, $sec, $declination ) =
       $coordinate =~ m/^ \s* (\d+) - (\d+) - ([\d.]+) ([NESW]) \s* $/ix;
 
-    my $signeddegrees;
+    my $signedDegrees;
 
     #Just die if all of our parameters aren't defined
     unless ( defined $deg
@@ -223,38 +233,55 @@ sub coordinateToDecimal3 {
     $min = $min / 60;
     $sec = $sec / 3600;
 
-    $signeddegrees = ( $deg + $min + $sec );
+    $signedDegrees = ( $deg + $min + $sec );
 
-    #South and West declinations are negative
-    if ( ( $declination eq "S" ) || ( $declination eq "W" ) ) {
-        $signeddegrees = -($signeddegrees);
-    }
+#     #South and West declinations are negative
+#     if ( ( $declination eq "S" ) || ( $declination eq "W" ) ) {
+#         $signedDegrees = -($signedDegrees);
+#     }
 
     given ($declination) {
-        when (/NS/) {
+        when (/S|W/) {
+            $signedDegrees = -($signedDegrees);
+#              say "coordinateToDecimal3 negative declination";
+            continue;
+        }
+        
+        when (/N|S/) {
 
             #Latitude is invalid if less than -90  or greater than 90
-            $signeddegrees = "0" if ( abs($signeddegrees) > 90 );
+            if ( abs($signedDegrees) > 90 ) {
+                die "$signedDegrees is out of valid range for latitude";
+                $signedDegrees = 0;
+            }
         }
-        when (/EW/) {
+        when (/E|W/) {
 
             #Longitude is invalid if less than -180 or greater than 180
-            $signeddegrees = "0" if ( abs($signeddegrees) > 180 );
+            if ( abs($signedDegrees) > 180 ) {
+                die "$signedDegrees is out of valid range for longitude";
+                $signedDegrees = 0;
+            }
         }
         default {
+            say "Deg: $deg, Min:$min, Sec:$sec, Decl:$declination";
+            die "Error converting coordinate to decimal in coordinateToDecimal3";
         }
 
     }
-    say "Coordinate: $coordinate to $signeddegrees"        if $main::debug;
+    say "Coordinate: $coordinate to $signedDegrees"        if $main::debug;
     say "Deg: $deg, Min:$min, Sec:$sec, Decl:$declination" if $main::debug;
-    return ($signeddegrees);
+    return ($signedDegrees);
 }
 
 sub coordinateToDecimalCifpFormat {
 
     #Convert a latitude or longitude in CIFP format to its decimal equivalent
-    my ($coordinate) = shift;
+    #Validate and set input parameters to this function
+    my ($coordinate) = validate_pos( @_, { type => SCALAR } );
+    
     my ( $deg, $min, $sec, $signedDegrees, $declination, $secPostDecimal );
+    
     my $data;
 
     #First parse the common information for a record to determine which more specific parser to use
@@ -330,8 +357,8 @@ sub coordinateToDecimalCifpFormat {
         $signedDegrees = -($signedDegrees);
     }
 
-    # say "Coordinate: $coordinate to $signedDegrees";           #if $debug;
-    # say "Decl:$declination Deg: $deg, Min:$min, Sec:$sec";    #if $debug;
+    say "Coordinate: $coordinate to $signedDegrees";           #if $main::debug;
+    say "Decl:$declination Deg: $deg, Min:$min, Sec:$sec";    #if $main::debug;
 
     return ($signedDegrees);
 }

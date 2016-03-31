@@ -329,11 +329,11 @@ sub expand_AFF_AFF1 {
 
     # say $hashRef->{FACILITY_TYPE};
     # #Calculate the decimal representation of lon/lat
-    # my $latitude = &coordinatetodecimal2(
+    # my $latitude = &coordinateToDecimal2(
     # $hashRef->{Latitude_Degrees}, $hashRef->{Latitude_Minutes},
     # $hashRef->{Latitude_Seconds}, $hashRef->{Latitude_Hemisphere},
     # );
-    # my $longitude = &coordinatetodecimal2(
+    # my $longitude = &coordinateToDecimal2(
     # $hashRef->{Longitude_Degrees}, $hashRef->{Longitude_Minutes},
     # $hashRef->{Longitude_Seconds}, $hashRef->{Longitude_Hemisphere},
     # );
@@ -349,11 +349,11 @@ sub expand_APT_APT1 {
 
     # say $hashRef->{FACILITY_TYPE};
     # #Calculate the decimal representation of lon/lat
-    # my $latitude = &coordinatetodecimal2(
+    # my $latitude = &coordinateToDecimal2(
     # $hashRef->{Latitude_Degrees}, $hashRef->{Latitude_Minutes},
     # $hashRef->{Latitude_Seconds}, $hashRef->{Latitude_Hemisphere},
     # );
-    # my $longitude = &coordinatetodecimal2(
+    # my $longitude = &coordinateToDecimal2(
     # $hashRef->{Longitude_Degrees}, $hashRef->{Longitude_Minutes},
     # $hashRef->{Longitude_Seconds}, $hashRef->{Longitude_Hemisphere},
     # );
@@ -403,11 +403,11 @@ sub expand_APT_RMK {
 
     # say $hashRef->{FACILITY_TYPE};
     # #Calculate the decimal representation of lon/lat
-    # my $latitude = &coordinatetodecimal2(
+    # my $latitude = &coordinateToDecimal2(
     # $hashRef->{Latitude_Degrees}, $hashRef->{Latitude_Minutes},
     # $hashRef->{Latitude_Seconds}, $hashRef->{Latitude_Hemisphere},
     # );
-    # my $longitude = &coordinatetodecimal2(
+    # my $longitude = &coordinateToDecimal2(
     # $hashRef->{Longitude_Degrees}, $hashRef->{Longitude_Minutes},
     # $hashRef->{Longitude_Seconds}, $hashRef->{Longitude_Hemisphere},
     # );
