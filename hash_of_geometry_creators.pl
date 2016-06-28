@@ -1,3 +1,9 @@
+#These hashes listing the subroutines that will be called for each record type
+#to process any geometry information in it (eg. converting to lon/lat to WGS84)
+#They are all located in geometryProcessors.pm
+# Format is:
+#  FILENAME => {'RECORDTYPE' => SUBROUTINE TO CALL}
+
 OBSTACLE => { 'OBSTACLE' => \&geometry_OBSTACLE_OBSTACLE, },
   AFF    => {
     'AFF1' => \&geometry_AFF_AFF1,

@@ -3,8 +3,8 @@ set -eu                # Always put this in Bourne shell scripts
 IFS=$(printf '\n\t')   # Always put this in Bourne shell scripts
 
 #Install necessary software
-sudo apt-get install \
-					git \
+sudo apt install \
+                    git \
                     sqlite3 \
                     perltidy \
                     cpanminus \

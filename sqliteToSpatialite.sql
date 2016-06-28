@@ -127,6 +127,7 @@ SELECT InitSpatialMetadata(1);
                                 CAST (latitude AS DOUBLE),
                                 4326);
 --         --ATS3
+--          There aren't any of these yet so I'm commenting them out
 --         SELECT AddGeometryColumn( 'ATS_ATS3' , 'geometry' , 4326, 'POINT');
 --         SELECT CreateSpatialIndex( 'ATS_ATS3' , 'geometry'  );
 --         UPDATE ATS_ATS3
@@ -391,23 +392,23 @@ SELECT InitSpatialMetadata(1);
         , awy2a.latitude
         , awy2a.longitude
         FROM
-        awy_awy1 AS awy1
+            awy_awy1 AS awy1
         JOIN
-        awy_awy2 AS awy2
-        ON
-            awy1.airway_point_sequence_number = awy2.airway_point_sequence_number
-            AND
-            awy1.airway_designation = awy2.airway_designation
-            AND
-            awy1.airway_type = awy2.airway_type
+            awy_awy2 AS awy2
+                ON
+                    awy1.airway_point_sequence_number = awy2.airway_point_sequence_number
+                    AND
+                    awy1.airway_designation = awy2.airway_designation
+                    AND
+                    awy1.airway_type = awy2.airway_type
         JOIN
-        awy_awy2 AS awy2a
-        ON
-            CAST (awy1.airway_point_sequence_number AS REAL) + 10 = CAST(awy2a.airway_point_sequence_number  AS REAL)
-            AND
-            awy1.airway_designation = awy2a.airway_designation
-            AND
-            awy1.airway_type = awy2a.airway_type
+            awy_awy2 AS awy2a
+                ON
+                    CAST (awy1.airway_point_sequence_number AS REAL) + 10 = CAST(awy2a.airway_point_sequence_number  AS REAL)
+                    AND
+                    awy1.airway_designation = awy2a.airway_designation
+                    AND
+                    awy1.airway_type = awy2a.airway_type
 
         WHERE
             -- awy1.airway_designation = 'J1'

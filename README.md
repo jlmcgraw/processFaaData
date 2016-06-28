@@ -19,7 +19,7 @@ How to get this utility up and running:
 	Download the repository
 		git clone https://github.com/jlmcgraw/processFaaData.git
 
-	Run setup.sh to install necessary dependencies
+	Run setup.sh to install necessary dependencies using Carton
 		./setup.sh
 
 	Download the current 56-day data from https://nfdc.faa.gov/xwiki/bin/view/NFDC/56+Day+NASR+Subscription

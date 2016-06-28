@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------------
---All VHF frequencies, including remotes, for an airport
+--All VHF frequencies, including remotes and SID/STARs, for an airport
 -- Uses Common Table Expressions (CTEs)
 --------------------------------------------------------------------------------
 WITH 
@@ -94,7 +94,8 @@ LEFT OUTER JOIN
             = remote_freqs.landing_facility_site_number
 
 WHERE
-    apt.location_identifier IN ('SAC', 'VCB','OFP','RIC', 'JYO')
+    -- An example selection of various sized military and civilian airports
+    apt.location_identifier IN ('OFP' , 'JYO' , 'RIC' , 'IAD' , 'ADW')
 
 ORDER BY
     apt.location_identifier
