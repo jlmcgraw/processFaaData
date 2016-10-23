@@ -255,7 +255,7 @@ foreach my $key ( sort keys %hash_of_parsers ) {
             $hash_of_normalizers{$baseFile}{$recordType}->( $data2, $dbh );
         }
 
-        #Expand text if requested, may add columns to hash
+        #Expand text if requested. This may add new keys to the hash
         if ( $shouldExpandText
             && exists $hash_of_expanders{$baseFile}{$recordType} )
         {
@@ -264,7 +264,8 @@ foreach my $key ( sort keys %hash_of_parsers ) {
             $hash_of_expanders{$baseFile}{$recordType}->($data2);
         }
 
-        #If requested, provide decimalized lon/lat columns in order to create spatialite geometry, may add columns to hash
+        #If requested, provide decimalized lon/lat keys in order to create spatialite geometry.  
+        #This may add new keys to the hash
         if ( $shouldCreateGeometry
             && exists $hash_of_geometry_creators{$baseFile}{$recordType} )
         {
@@ -299,7 +300,7 @@ foreach my $key ( sort keys %hash_of_parsers ) {
 
             #Makes a "CREATE TABLE" statement based on the keys of the hash, columns sorted alphabetically
             #Include the master_record_row_id as an explicit foreign key to master record
-            #The inclusion of " NONE" here is  to force sqlite to not assign affinity to columns, since that is making it "TEXT" by default
+            #The inclusion of " NONE," here is  to force sqlite to not assign affinity to columns, since that is making it "TEXT" by default
             my $createStmt =
                 'CREATE TABLE '
               . $baseFile . "_"

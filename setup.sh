@@ -8,7 +8,7 @@ sudo apt install \
                     sqlite3 \
                     perltidy \
                     cpanminus \
-                    Carton \
+                    carton \
                     libspatialite-dev \
                     spatialite-bin \
                     libsqlite3-mod-spatialite \
