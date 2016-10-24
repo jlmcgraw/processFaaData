@@ -92,10 +92,10 @@ sub coordinateToDecimal {
 
     #Remove any whitespace
     $coordinate =~ s/\s//g;
-    
+
     my ( $deg, $min, $sec, $declination ) =
       $coordinate =~ m/^ \s* (\d+) - (\d+) - ([\d.]+) ([NESW]) \s* $/ix;
-      
+
     unless ( defined $deg
         && defined $min
         && defined $sec
@@ -105,11 +105,11 @@ sub coordinateToDecimal {
         #die "Error converting coordinate '$coordinate' to decimal in coordinateToDecimal3";
         return 0;
     }
-    
+
     if ( $declination !~ /[NSEW]/i ) {
         die "Bad declination parameter: $declination";
     }
-    
+
     $deg = $deg / 1;
     $min = $min / 60;
     $sec = $sec / 3600;
@@ -118,7 +118,8 @@ sub coordinateToDecimal {
     given ($declination) {
         when (/[SW]/) {
             $signedDegrees = -($signedDegrees);
-#             say "coordinateToDecimal negative declination";
+
+            #             say "coordinateToDecimal negative declination";
             continue;
         }
 
@@ -177,7 +178,8 @@ sub coordinateToDecimal2 {
     given ($declination) {
         when (/[SW]/) {
             $signedDegrees = -($signedDegrees);
-#              say "coordinateToDecimal2 negative declination";
+
+            #              say "coordinateToDecimal2 negative declination";
             continue;
         }
 
@@ -235,18 +237,19 @@ sub coordinateToDecimal3 {
 
     $signedDegrees = ( $deg + $min + $sec );
 
-#     #South and West declinations are negative
-#     if ( ( $declination eq "S" ) || ( $declination eq "W" ) ) {
-#         $signedDegrees = -($signedDegrees);
-#     }
+    #     #South and West declinations are negative
+    #     if ( ( $declination eq "S" ) || ( $declination eq "W" ) ) {
+    #         $signedDegrees = -($signedDegrees);
+    #     }
 
     given ($declination) {
         when (/S|W/) {
             $signedDegrees = -($signedDegrees);
-#              say "coordinateToDecimal3 negative declination";
+
+            #              say "coordinateToDecimal3 negative declination";
             continue;
         }
-        
+
         when (/N|S/) {
 
             #Latitude is invalid if less than -90  or greater than 90
@@ -265,7 +268,8 @@ sub coordinateToDecimal3 {
         }
         default {
             say "Deg: $deg, Min:$min, Sec:$sec, Decl:$declination";
-            die "Error converting coordinate to decimal in coordinateToDecimal3";
+            die
+              "Error converting coordinate to decimal in coordinateToDecimal3";
         }
 
     }
@@ -279,9 +283,9 @@ sub coordinateToDecimalCifpFormat {
     #Convert a latitude or longitude in CIFP format to its decimal equivalent
     #Validate and set input parameters to this function
     my ($coordinate) = validate_pos( @_, { type => SCALAR } );
-    
+
     my ( $deg, $min, $sec, $signedDegrees, $declination, $secPostDecimal );
-    
+
     my $data;
 
     #First parse the common information for a record to determine which more specific parser to use
@@ -357,7 +361,7 @@ sub coordinateToDecimalCifpFormat {
         $signedDegrees = -($signedDegrees);
     }
 
-    say "Coordinate: $coordinate to $signedDegrees";           #if $main::debug;
+    say "Coordinate: $coordinate to $signedDegrees";          #if $main::debug;
     say "Decl:$declination Deg: $deg, Min:$min, Sec:$sec";    #if $main::debug;
 
     return ($signedDegrees);

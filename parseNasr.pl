@@ -62,8 +62,6 @@ use textExpanders;
 #Subroutines to normalize tables, called via dispatch table %hash_of_normalizers
 use normalizingProcessors;
 
-
-
 my $opt_string = 'veg';
 
 my $arg_num = scalar @ARGV;
@@ -264,7 +262,7 @@ foreach my $key ( sort keys %hash_of_parsers ) {
             $hash_of_expanders{$baseFile}{$recordType}->($data2);
         }
 
-        #If requested, provide decimalized lon/lat keys in order to create spatialite geometry.  
+        #If requested, provide decimalized lon/lat keys in order to create spatialite geometry.
         #This may add new keys to the hash
         if ( $shouldCreateGeometry
             && exists $hash_of_geometry_creators{$baseFile}{$recordType} )
@@ -277,7 +275,7 @@ foreach my $key ( sort keys %hash_of_parsers ) {
         #Delete any keys/columns with "blank" in the name
         {
             my @unwanted;
-            foreach my $key ( sort keys %{ $data2 } ) {
+            foreach my $key ( sort keys %{$data2} ) {
                 if ( $key =~ /blank/i ) {
 
                     #Save this key to our array of entries to delete
@@ -331,15 +329,15 @@ foreach my $key ( sort keys %hash_of_parsers ) {
           . $baseFile . "_"
           . $recordType . '('
           . 'master_record_row_id,'
-          . join( ',', keys %{ $data2 } )
+          . join( ',', keys %{$data2} )
           . ') VALUES ('
           . $master_record_row_id . ','
-          . join( ',', ('?') x keys %{ $data2 } ) . ')';
+          . join( ',', ('?') x keys %{$data2} ) . ')';
 
         # $insertStmt: $insertStmt
         #Insert the values into the database
         my $sth = $dbh->prepare($insertStmt);
-        $sth->execute( values %{ $data2 } );
+        $sth->execute( values %{$data2} );
 
         #If we just inserted a master record
         #Then get and save it's rowId to be used as a foreign key for its child records

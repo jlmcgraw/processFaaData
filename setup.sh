@@ -12,7 +12,8 @@ sudo apt install \
                     libspatialite-dev \
                     spatialite-bin \
                     libsqlite3-mod-spatialite \
-                    gdal-bin
+                    gdal-bin \
+                    unzip
                      
 #Install the libraries in our cpanfile locally
 carton install

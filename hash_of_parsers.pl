@@ -616,6 +616,7 @@ AFF => {
   # cdr    => {},
 
   COM => {
+
     #     communications_outlet_frequencies_in_16_fields_of_9_characters:144
     #     operational_hours_in_3_fields_of_20_characters_each:60
     #     charts_in_4_fields_of_2_characters_each:8
@@ -1089,7 +1090,8 @@ AFF => {
     ',
   },
   MTR => {
-#   artcc_ident_20_occurences_of_4_character_ident:80
+
+    #   artcc_ident_20_occurences_of_4_character_ident:80
     'MTR1' => '
         record_type_indicator:4
     route_type:3

@@ -7,11 +7,9 @@ See "Sample SQL queries.sql" for some examples of querying this database
 A sample spatialite version of the database can be found here: 
     https://www.dropbox.com/s/j018ph69x9nduv4/data.tar.xz
 
-These instructions are based on using Ubuntu 14.04+
+These instructions are based on using Ubuntu 16.04
 
 How to get this utility up and running:
-
-	Enable the "universe" repository in "Software & Updates" section of System Settings and update
 
 	Install git
 		sudo apt-get install git
@@ -23,7 +21,7 @@ How to get this utility up and running:
 		./setup.sh
 
 	Download the current 56-day data from https://nfdc.faa.gov/xwiki/bin/view/NFDC/56+Day+NASR+Subscription
-		wget https://nfdc.faa.gov/webContent/56DaySub/56DySubscription_December_10__2015_-_February_04__2016.zip
+		wget https://nfdc.faa.gov/webContent/56DaySub/56DySubscription_September_15__2016_-_November_10__2016.zip
 
 
 	Download the current obstacle data (Daily DOF downloaded automatically by create_databases.sh)
@@ -31,7 +29,6 @@ How to get this utility up and running:
 			or
 		http://tod.faa.gov/tod/DAILY_DOF.ZIP
 
-	Requires perl version > 5.018
 
 How to use these utilities
 
