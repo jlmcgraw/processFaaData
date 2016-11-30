@@ -13,6 +13,11 @@ fi
 #Get command line parameters
 nasr56dayFileName=$1
 
+if [ ! -f "$nasr56dayFileName" ]; 	then
+	echo "No 56-day database found"
+	exit 1
+	fi
+	
 # nasr56dayBaseUrl=https://nfdc.faa.gov/webContent/56DaySub
 # nasr56dayFileName=56DySubscription_December_10__2015_-_February_04__2016.zip
 
@@ -46,13 +51,11 @@ if [ ! -d "$controlledairspace" ]; 	then
  	fi
 
 #delete any existing files
-set +e
-rm $outputdir/56day.db
-rm $outputdir/spatial56day.db
-rm ./DAILY_DOF.ZIP ./DOF.DAT
-rm $outputdir/ControlledAirspace.sqlite 
-rm $outputdir/SpecialUseAirspace.sqlite
-set -e
+rm --force $outputdir/56day.db
+rm --force $outputdir/spatial56day.db
+rm --force ./DAILY_DOF.ZIP ./DOF.DAT
+rm --force $outputdir/ControlledAirspace.sqlite 
+rm --force $outputdir/SpecialUseAirspace.sqlite
 
 #get the daily obstacle file
 echo "---------- Download and process daily obstacle file"
@@ -61,7 +64,6 @@ unzip DAILY_DOF.ZIP
 
 #remove the header lines from obstacle file and put output in $datadir as "OBSTACLE.txt"
 sed '1,4d' ./DOF.DAT > $datadir/OBSTACLE.txt
-
 
 echo "---------- Create the database"
 #create the new sqlite database
@@ -95,7 +97,7 @@ export GML_SKIP_RESOLVE_ELEMS=NONE
 dbfile=SpecialUseAirspace.sqlite
 #if [ -e $outputdir/$dbfile ]; then (rm $outputdir/$dbfile) fi
 find $sua \
-  -name "*.xml" \
+  -iname "*.xml" \
   -type f \
   -print \
   -exec ogr2ogr \
@@ -123,7 +125,7 @@ dbfile=ControlledAirspace.sqlite
 #if [ -e $outputdir/$dbfile ]; then (rm $outputdir/$dbfile) fi
 
 find $controlledairspace \
-  -name "*.shp" \
+  -iname "*.shp" \
   -type f \
   -print \
   -exec ogr2ogr \

@@ -4,3 +4,4 @@ requires 'Smart::Comments';
 requires 'Parse::FixedLength';
 requires 'DBI';
 requires 'DBD::SQLite';
+requires 'File::Slurp';
