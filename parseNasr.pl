@@ -37,7 +37,7 @@ use File::Basename;
 use Getopt::Std;
 use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
-use File::Slurp;
+
 use vars qw/ %opt /;
 
 #Allow use of locally installed libraries in conjunction with Carton
@@ -45,6 +45,7 @@ use FindBin '$Bin';
 use lib "$FindBin::Bin/local/lib/perl5";
 
 #Non-standard libaries
+use File::Slurp;
 use Parse::FixedLength;
 use Params::Validate qw(:all);
 use DBI;
