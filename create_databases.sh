@@ -26,12 +26,18 @@ if [ ! -f "$nasr56dayFileName" ]; 	then
 # wget --timestamping $nasr56dayBaseUrl/$nasr56dayFileName
 # wget https://nfdc.faa.gov/webContent/56DaySub/56DySubscription_December_10__2015_-_February_04__2016.zip
 
-#Where the 56 day data is unzipped to
-datadir=$(basename $nasr56dayFileName .zip)
-#Ensure trailing /
+# #Where the 56 day data is unzipped to
+# datadir=$(basename $nasr56dayFileName .zip)
+# #Ensure trailing /
+# datadir+="/"
+
+# Get command line parameter and construct the full path to the unzipped data
+datadir=$(readlink -m $(dirname $nasr56dayFileName))
+datadir+="/"
+datadir+=$(basename $nasr56dayFileName .zip)
 datadir+="/"
 
-#recursizely unzip to datadir
+# Recursizely unzip NASR .zip file to $datadir
 ./recursiveUnzip.sh $nasr56dayFileName
 
 #Where to save files we create
@@ -41,56 +47,51 @@ sua=$datadir/Additional_Data/AIXM/SAA-AIXM_5_Schema/SaaSubscriberFile/Saa_Sub_Fi
 controlledairspace=$datadir/Additional_Data/Shape_Files
 
 if [ ! -d "$sua" ]; 	then
-	echo "No Special Use Airspace information found"
+	echo "No Special Use Airspace information found in ${sua}"
 	exit 1
 	fi
 
 if [ ! -d "$controlledairspace" ]; 	then
-	echo "No Controlled Airspace information found"
+	echo "No Controlled Airspace information found in ${controlledairspace}"
 	exit 1
  	fi
 
-#delete any existing files
+# Delete any existing files
 rm --force $outputdir/56day.db
 rm --force $outputdir/spatial56day.db
 rm --force ./DAILY_DOF.ZIP ./DOF.DAT
 rm --force $outputdir/ControlledAirspace.sqlite 
 rm --force $outputdir/SpecialUseAirspace.sqlite
 
-#get the daily obstacle file
+# Get the daily obstacle file
 echo "---------- Download and process daily obstacle file"
 wget --timestamping http://tod.faa.gov/tod/DAILY_DOF.ZIP
 unzip DAILY_DOF.ZIP
 
-#remove the header lines from obstacle file and put output in $datadir as "OBSTACLE.txt"
+# Remove the header lines from obstacle file and put output in $datadir as "OBSTACLE.txt"
 sed '1,4d' ./DOF.DAT > $datadir/OBSTACLE.txt
 
 echo "---------- Create the database"
-#create the new sqlite database
-#Create geometry and expand text
-./parseNasr.pl -g -e $datadir
+# Create the new sqlite database
+# options for Create geometry and expand text
+./parseNasr.pl -g -e "$datadir"
 
 echo "---------- Adding indexes"
-#add indexes
+# Add indexes
 sqlite3 $outputdir/56day.db < addIndexes.sql
 
 echo "---------- Create the spatialite version of database"
 cp ./56day.db $outputdir/spatial56day.db
 
-#convert the copy to spatialite
+# Convert the copy to spatialite
 set +e
 sqlite3 $outputdir/spatial56day.db < sqliteToSpatialite.sql
 set -e
 
-#Lump the airspaces into spatialite databases
+# Lump the airspaces into spatialite databases
 echo "---------- Convert controlled and special use airspaces into spatialite databases"
 
-# #Given a version of gdal >= 2.0 you can convert the AIXM .xml files into other vector formats
-# #(try a trunk build https://github.com/OSGeo/gdal)
-# 
-# #Edit this to point to where you cloned the GDAL repository to
-# export GDAL_DATA="/home/jlmcgraw/Documents/github/gdal/gdal/data/"
-#GML related environment variables for the conversion
+# GML related environment variables for the conversion
 export GML_FETCH_ALL_GEOMETRIES=YES
 export GML_SKIP_RESOLVE_ELEMS=NONE
 
@@ -145,4 +146,5 @@ find $controlledairspace \
     -gt 65536 \
   \;
 
+# Vacuum the database if needed
 ogrinfo $dbfile -sql "VACUUM"
