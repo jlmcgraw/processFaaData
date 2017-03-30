@@ -47,3 +47,4 @@ CREATE INDEX TWR_TWR7_satellite_airport_site_number_index
 --AWOS/ASOS	
 -- 	awos.landing_facility_site_number_when_station_located_at_airport
 
+VACUUM;
