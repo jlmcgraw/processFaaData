@@ -5,8 +5,8 @@ IFS=$(printf '\n\t')  # Always put this in Bourne shell scripts
 #Check count of command line parameters
 if [ "$#" -ne 1 ] ; then
   echo "Usage: $0 56_Day_Subscription_Zip_file" >&2
-  echo "eg. $0 56DySubscription_December_10__2015_-_February_04__2016.zip"
-  echo " Download most recent data from https://nfdc.faa.gov/xwiki/bin/view/NFDC/56+Day+NASR+Subscription"
+  echo "eg. $0 56DySubscription_December_10__2015_-_February_04__2016.zip" >&2
+  echo " Download most recent data from https://nfdc.faa.gov/xwiki/bin/view/NFDC/56+Day+NASR+Subscription" >&2
   exit 1
 fi
 
@@ -14,7 +14,7 @@ fi
 nasr56dayFileName=$1
 
 if [ ! -f "$nasr56dayFileName" ]; 	then
-	echo "No 56-day database found"
+	echo "No 56-day database found" >&2
 	exit 1
 	fi
 	
@@ -32,13 +32,13 @@ if [ ! -f "$nasr56dayFileName" ]; 	then
 # datadir+="/"
 
 # Get command line parameter and construct the full path to the unzipped data
-datadir=$(readlink -m $(dirname $nasr56dayFileName))
+datadir=$(readlink -m "$(dirname "$nasr56dayFileName")")
 datadir+="/"
-datadir+=$(basename $nasr56dayFileName .zip)
+datadir+=$(basename "$nasr56dayFileName" .zip)
 datadir+="/"
 
 # Recursizely unzip NASR .zip file to $datadir
-./recursiveUnzip.sh $nasr56dayFileName
+./recursiveUnzip.sh "$nasr56dayFileName"
 
 #Where to save files we create
 outputdir=.
@@ -47,12 +47,12 @@ sua=$datadir/Additional_Data/AIXM/SAA-AIXM_5_Schema/SaaSubscriberFile/Saa_Sub_Fi
 controlledairspace=$datadir/Additional_Data/Shape_Files
 
 if [ ! -d "$sua" ]; 	then
-	echo "No Special Use Airspace information found in ${sua}"
+	echo "No Special Use Airspace information found in ${sua}" >&2
 	exit 1
 	fi
 
 if [ ! -d "$controlledairspace" ]; 	then
-	echo "No Controlled Airspace information found in ${controlledairspace}"
+	echo "No Controlled Airspace information found in ${controlledairspace}" >&2
 	exit 1
  	fi
 
