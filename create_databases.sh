@@ -2,7 +2,7 @@
 set -eu                # Always put this in Bourne shell scripts
 IFS=$(printf '\n\t')  # Always put this in Bourne shell scripts
 
-#Check count of command line parameters
+# Check count of command line parameters
 if [ "$#" -ne 1 ] ; then
   echo "Usage: $0 56_Day_Subscription_Zip_file" >&2
   echo "eg. $0 56DySubscription_December_10__2015_-_February_04__2016.zip" >&2
@@ -10,26 +10,13 @@ if [ "$#" -ne 1 ] ; then
   exit 1
 fi
 
-#Get command line parameters
+# Get command line parameters
 nasr56dayFileName=$1
 
 if [ ! -f "$nasr56dayFileName" ]; 	then
 	echo "No 56-day database found" >&2
 	exit 1
 	fi
-	
-# nasr56dayBaseUrl=https://nfdc.faa.gov/webContent/56DaySub
-# nasr56dayFileName=56DySubscription_December_10__2015_-_February_04__2016.zip
-
-# BUG TODO Currently not working for some reason
-# #get current datafile
-# wget --timestamping $nasr56dayBaseUrl/$nasr56dayFileName
-# wget https://nfdc.faa.gov/webContent/56DaySub/56DySubscription_December_10__2015_-_February_04__2016.zip
-
-# #Where the 56 day data is unzipped to
-# datadir=$(basename $nasr56dayFileName .zip)
-# #Ensure trailing /
-# datadir+="/"
 
 # Get command line parameter and construct the full path to the unzipped data
 datadir=$(readlink -m "$(dirname "$nasr56dayFileName")")
@@ -37,12 +24,14 @@ datadir+="/"
 datadir+=$(basename "$nasr56dayFileName" .zip)
 datadir+="/"
 
-# Recursizely unzip NASR .zip file to $datadir
+# Recursively unzip NASR .zip file to $datadir
+echo "---------- Recursively unzipping $nasr56dayFileName"
 ./recursiveUnzip.sh "$nasr56dayFileName"
 
-#Where to save files we create
+# Where to save files we create
 outputdir=.
 
+# Location of airspace files
 sua=$datadir/Additional_Data/AIXM/SAA-AIXM_5_Schema/SaaSubscriberFile/Saa_Sub_File
 controlledairspace=$datadir/Additional_Data/Shape_Files
 

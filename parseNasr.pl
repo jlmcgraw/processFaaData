@@ -32,7 +32,7 @@ use 5.018;
 use strict;
 use warnings;
 
-#Standard libraries
+# Standard libraries
 use File::Basename;
 use Getopt::Std;
 use Data::Dumper;
@@ -40,21 +40,22 @@ $Data::Dumper::Sortkeys = 1;
 
 use vars qw/ %opt /;
 
-#Allow use of locally installed libraries in conjunction with Carton
+# Allow use of locally installed libraries in conjunction with Carton
 use FindBin '$Bin';
 use lib "$FindBin::Bin/local/lib/perl5";
+use lib $FindBin::Bin;
 
-#Non-standard libaries
+# Non-standard libaries
 use File::Slurp;
 use Parse::FixedLength;
 use Params::Validate qw(:all);
 use DBI;
 use processFaaData;
 
-#Uncomment to show debugging statements
+# Uncomment to show debugging statements
 #use Smart::Comments;
 
-#Subroutines to calculate geometry, called via dispatch table %hash_of_geometry_creators
+# Subroutines to calculate geometry, called via dispatch table %hash_of_geometry_creators
 use geometryProcessors;
 
 #Subroutines to expand text, called via dispatch table %hash_of_expanders
@@ -75,14 +76,14 @@ if ( $arg_num < 1 ) {
     usage();
 }
 
-#Get the target data directory from command line options
+# Get the target data directory from command line options
 my $targetdir = $ARGV[0];
 
 my $debug                = $opt{v};
 my $shouldExpandText     = $opt{e};
 my $shouldCreateGeometry = $opt{g};
 
-#Parameters for the FixedLength parser
+# Parameters for the FixedLength parser
 my %parameters = (
 
     # 'autonum' => 'false',
