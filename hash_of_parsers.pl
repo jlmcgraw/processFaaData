@@ -1665,7 +1665,7 @@ AFF => {
         longitude_seconds:5
         longitude_hemisphere:1
         blank11:1
-        obstacle_type:12
+        obstacle_type:18
         blank12:1
         quantity:1
         blank13:1

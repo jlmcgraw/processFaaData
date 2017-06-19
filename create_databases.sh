@@ -2,55 +2,62 @@
 set -eu                # Always put this in Bourne shell scripts
 IFS=$(printf '\n\t')  # Always put this in Bourne shell scripts
 
+# Where to save files we create
+outputdir=.
+
 # Check count of command line parameters
 if [ "$#" -ne 1 ] ; then
-  echo "Usage: $0 56_Day_Subscription_Zip_file" >&2
-  echo "eg. $0 56DySubscription_December_10__2015_-_February_04__2016.zip" >&2
-  echo " Download most recent data from https://nfdc.faa.gov/xwiki/bin/view/NFDC/56+Day+NASR+Subscription" >&2
+  echo "Usage: $0 28_Day_Subscription_Zip_file" >&2
+  echo "eg. $0 28DaySubscription_Effective_2017-06-22.zip" >&2
+  echo " Download most recent data from https://nfdc.faa.gov/xwiki/bin/view/NFDC/28+Day+NASR+Subscription" >&2
   exit 1
 fi
 
 # Get command line parameters
-nasr56dayFileName=$1
+nasr28dayFileName=$1
 
-if [ ! -f "$nasr56dayFileName" ]; 	then
-	echo "No 56-day database found" >&2
+if [ ! -f "$nasr28dayFileName" ]; 	then
+	echo "No 28-day source zip file found" >&2
 	exit 1
 	fi
 
 # Get command line parameter and construct the full path to the unzipped data
-datadir=$(readlink -m "$(dirname "$nasr56dayFileName")")
+datadir=$(readlink -m "$(dirname "$nasr28dayFileName")")
 datadir+="/"
-datadir+=$(basename "$nasr56dayFileName" .zip)
+datadir+=$(basename "$nasr28dayFileName" .zip)
 datadir+="/"
 
-# Recursively unzip NASR .zip file to $datadir
-echo "---------- Recursively unzipping $nasr56dayFileName"
-./recursiveUnzip.sh "$nasr56dayFileName"
-
-# Where to save files we create
-outputdir=.
+readonly nasr_database="$outputdir/nasr.sqlite"
+readonly nasr_spatialite_database="$outputdir/spatialite_nasr.sqlite"
+readonly controlled_airspace_spatialite_database="$outputdir/controlled_airspace_spatialite.sqlite"
+readonly special_use_airspace_spatialite_database="$outputdir/special_use_airspace_spatialite.sqlite"
 
 # Location of airspace files
-sua=$datadir/Additional_Data/AIXM/SAA-AIXM_5_Schema/SaaSubscriberFile/Saa_Sub_File
-controlledairspace=$datadir/Additional_Data/Shape_Files
+sua_input_directory=$datadir/Additional_Data/AIXM/SAA-AIXM_5_Schema/SaaSubscriberFile/SaaSubscriberFile/Saa_Sub_File
+controlled_airspace_input_directory=$datadir/Additional_Data/Shape_Files
 
-if [ ! -d "$sua" ]; 	then
-	echo "No Special Use Airspace information found in ${sua}" >&2
+#-------------------------------------------------------------------------------
+
+# Recursively unzip NASR .zip file to $datadir
+echo "---------- Recursively unzipping $nasr28dayFileName"
+./recursiveUnzip.sh "$nasr28dayFileName"
+
+if [ ! -d "$sua_input_directory" ]; 	then
+	echo "No Special Use Airspace information found in ${sua_input_directory}" >&2
 	exit 1
 	fi
 
-if [ ! -d "$controlledairspace" ]; 	then
-	echo "No Controlled Airspace information found in ${controlledairspace}" >&2
+if [ ! -d "$controlled_airspace_input_directory" ]; 	then
+	echo "No Controlled Airspace information found in ${controlled_airspace_input_directory}" >&2
 	exit 1
  	fi
 
 # Delete any existing files
-rm --force $outputdir/56day.db
-rm --force $outputdir/spatial56day.db
+rm --force "$nasr_database"
+rm --force "$nasr_spatialite_database"
 rm --force ./DAILY_DOF.ZIP ./DOF.DAT
-rm --force $outputdir/ControlledAirspace.sqlite 
-rm --force $outputdir/SpecialUseAirspace.sqlite
+rm --force "$controlled_airspace_spatialite_database"
+rm --force "$special_use_airspace_spatialite_database"
 
 # Get the daily obstacle file
 echo "---------- Download and process daily obstacle file"
@@ -63,18 +70,18 @@ sed '1,4d' ./DOF.DAT > $datadir/OBSTACLE.txt
 echo "---------- Create the database"
 # Create the new sqlite database
 # options for Create geometry and expand text
-./parseNasr.pl -g -e "$datadir"
+./parse_nasr.pl -g -e "$datadir" "$nasr_database"
 
 echo "---------- Adding indexes"
 # Add indexes
-sqlite3 $outputdir/56day.db < addIndexes.sql
+sqlite3 "$nasr_database" < add_indexes.sql
 
 echo "---------- Create the spatialite version of database"
-cp ./56day.db $outputdir/spatial56day.db
+cp "$nasr_database" "$nasr_spatialite_database"
 
 # Convert the copy to spatialite
 set +e
-sqlite3 $outputdir/spatial56day.db < sqliteToSpatialite.sql
+sqlite3 "$nasr_spatialite_database" < sqlite_to_spatialite.sql
 set -e
 
 # Lump the airspaces into spatialite databases
@@ -84,56 +91,56 @@ echo "---------- Convert controlled and special use airspaces into spatialite da
 export GML_FETCH_ALL_GEOMETRIES=YES
 export GML_SKIP_RESOLVE_ELEMS=NONE
 
-dbfile=SpecialUseAirspace.sqlite
+# dbfile=SpecialUseAirspace.sqlite
 #if [ -e $outputdir/$dbfile ]; then (rm $outputdir/$dbfile) fi
-find $sua \
-  -iname "*.xml" \
-  -type f \
-  -print \
-  -exec ogr2ogr \
-    -f SQLite \
-    $outputdir/$dbfile \
-    {} \
-    -explodecollections \
-    -a_srs WGS84 \
-    -update \
-    -append \
-    -wrapdateline \
-    -fieldTypeToString ALL \
-    -dsco SPATIALITE=YES \
-    -skipfailures \
-    -lco SPATIAL_INDEX=YES \
-    -lco LAUNDER=NO \
+find "$sua_input_directory" \
+  -iname "*.xml"    \
+  -type f           \
+  -print            \
+  -exec ogr2ogr     \
+    -f SQLite       \
+    "$special_use_airspace_spatialite_database" \
+    {}              \
+    -explodecollections     \
+    -a_srs WGS84            \
+    -update                 \
+    -append                 \
+    -wrapdateline           \
+    -fieldTypeToString ALL  \
+    -dsco SPATIALITE=YES    \
+    -skipfailures           \
+    -lco SPATIAL_INDEX=YES  \
+    -lco LAUNDER=NO         \
     --config OGR_SQLITE_SYNCHRONOUS OFF \
-    --config OGR_SQLITE_CACHE 128 \
-    -gt 65536 \
+    --config OGR_SQLITE_CACHE 128       \
+    -gt 65536                           \
     \;
     
-ogrinfo $dbfile -sql "VACUUM"
+ogrinfo "$special_use_airspace_spatialite_database" -sql "VACUUM"
     
-dbfile=ControlledAirspace.sqlite
+# dbfile=ControlledAirspace.sqlite
 #if [ -e $outputdir/$dbfile ]; then (rm $outputdir/$dbfile) fi
 
-find $controlledairspace \
-  -iname "*.shp" \
-  -type f \
-  -print \
-  -exec ogr2ogr \
-    -f SQLite \
-    $outputdir/$dbfile \
-    {} \
-    -explodecollections \
-    -update \
-    -append \
-    -wrapdateline \
-    -dsco SPATIALITE=YES \
-    -skipfailures \
-    -lco SPATIAL_INDEX=YES \
-    -lco LAUNDER=NO \
+find "$controlled_airspace_input_directory" \
+  -iname "*.shp"    \
+  -type f           \
+  -print            \
+  -exec ogr2ogr     \
+    -f SQLite       \
+    "$controlled_airspace_spatialite_database" \
+    {}              \
+    -explodecollections     \
+    -update                 \
+    -append                 \
+    -wrapdateline           \
+    -dsco SPATIALITE=YES    \
+    -skipfailures           \
+    -lco SPATIAL_INDEX=YES  \
+    -lco LAUNDER=NO         \
     --config OGR_SQLITE_SYNCHRONOUS OFF \
-    --config OGR_SQLITE_CACHE 128 \
-    -gt 65536 \
+    --config OGR_SQLITE_CACHE 128       \
+    -gt 65536                           \
   \;
 
 # Vacuum the database if needed
-ogrinfo $dbfile -sql "VACUUM"
+ogrinfo "$controlled_airspace_spatialite_database" -sql "VACUUM"

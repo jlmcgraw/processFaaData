@@ -41,16 +41,17 @@ touch "${REFRESH_MARKER}"
 # Update local cache of 28 and 56 day files
 
 set +e
-    wget \
-        --directory-prefix="$DOWNLOAD_ROOT_DIR"    \
-        --recursive     \
-        -l2             \
-        --span-hosts    \
-        --domains=nfdc.faa.gov   \
-        --timestamping      \
-        --ignore-case       \
-        --accept-regex '.*/xwiki/bin/view/NFDC/56.*|.*56DySubscription_.*.zip'    \
-        https://nfdc.faa.gov/xwiki/bin/view/NFDC/56+Day+NASR+Subscription
+# FAA no longer releasing on a 56 day cycle
+#     wget \
+#         --directory-prefix="$DOWNLOAD_ROOT_DIR"    \
+#         --recursive     \
+#         -l2             \
+#         --span-hosts    \
+#         --domains=nfdc.faa.gov   \
+#         --timestamping      \
+#         --ignore-case       \
+#         --accept-regex '.*/xwiki/bin/view/NFDC/56.*|.*56DySubscription_.*.zip'    \
+#         https://nfdc.faa.gov/xwiki/bin/view/NFDC/56+Day+NASR+Subscription
         
     wget \
         --directory-prefix="$DOWNLOAD_ROOT_DIR"    \
