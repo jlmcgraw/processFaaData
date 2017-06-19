@@ -78,7 +78,7 @@ if ( $arg_num < 1 ) {
 
 # Get the target data directory from command line options
 my $targetdir = $ARGV[0];
-my $dbfile = $ARGV[1];
+my $dbfile    = $ARGV[1];
 
 my $debug                = $opt{v};
 my $shouldExpandText     = $opt{e};
@@ -240,7 +240,8 @@ foreach my $key ( sort keys %hash_of_parsers ) {
           Parse::FixedLength->new( [@parserArray], \%parameters );
 
         #Check for mismatch between expected and actual lengths
-        die "Line # $currentLineNumber - $textOfCurrentLine - \n Bad parse for $recordType: Expected "
+        die
+          "Line # $currentLineNumber - $textOfCurrentLine - \n Bad parse for $recordType: Expected "
           . $parser_specific->length
           . " characters but read "
           . length($textOfCurrentLine) . "\n"
