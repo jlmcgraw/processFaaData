@@ -27,13 +27,14 @@ datadir+="/"
 datadir+=$(basename "$nasr28dayFileName" .zip)
 datadir+="/"
 
+# Names of output files
 readonly nasr_database="$outputdir/nasr.sqlite"
 readonly nasr_spatialite_database="$outputdir/spatialite_nasr.sqlite"
 readonly controlled_airspace_spatialite_database="$outputdir/controlled_airspace_spatialite.sqlite"
 readonly special_use_airspace_spatialite_database="$outputdir/special_use_airspace_spatialite.sqlite"
 
 # Location of airspace files
-sua_input_directory=$datadir/Additional_Data/AIXM/SAA-AIXM_5_Schema/SaaSubscriberFile/SaaSubscriberFile/Saa_Sub_File
+sua_input_directory=$datadir/Additional_Data/AIXM/SAA-AIXM_5_Schema/SaaSubscriberFile/Saa_Sub_File
 controlled_airspace_input_directory=$datadir/Additional_Data/Shape_Files
 
 #-------------------------------------------------------------------------------
@@ -91,8 +92,6 @@ echo "---------- Convert controlled and special use airspaces into spatialite da
 export GML_FETCH_ALL_GEOMETRIES=YES
 export GML_SKIP_RESOLVE_ELEMS=NONE
 
-# dbfile=SpecialUseAirspace.sqlite
-#if [ -e $outputdir/$dbfile ]; then (rm $outputdir/$dbfile) fi
 find "$sua_input_directory" \
   -iname "*.xml"    \
   -type f           \
@@ -118,9 +117,6 @@ find "$sua_input_directory" \
     
 ogrinfo "$special_use_airspace_spatialite_database" -sql "VACUUM"
     
-# dbfile=ControlledAirspace.sqlite
-#if [ -e $outputdir/$dbfile ]; then (rm $outputdir/$dbfile) fi
-
 find "$controlled_airspace_input_directory" \
   -iname "*.shp"    \
   -type f           \
@@ -137,9 +133,11 @@ find "$controlled_airspace_input_directory" \
     -skipfailures           \
     -lco SPATIAL_INDEX=YES  \
     -lco LAUNDER=NO         \
+    -nlt MULTIPOLYGONZ      \
     --config OGR_SQLITE_SYNCHRONOUS OFF \
     --config OGR_SQLITE_CACHE 128       \
     -gt 65536                           \
+    -progress  \
   \;
 
 # Vacuum the database if needed
