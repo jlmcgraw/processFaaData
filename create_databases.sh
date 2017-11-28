@@ -1,5 +1,5 @@
 #!/bin/bash
-set -eu                # Always put this in Bourne shell scripts
+set -eu               # Always put this in Bourne shell scripts
 IFS=$(printf '\n\t')  # Always put this in Bourne shell scripts
 
 # Where to save files we create
@@ -9,7 +9,7 @@ outputdir=.
 if [ "$#" -ne 1 ] ; then
   echo "Usage: $0 28_Day_Subscription_Zip_file" >&2
   echo "eg. $0 28DaySubscription_Effective_2017-06-22.zip" >&2
-  echo " Download most recent data from https://nfdc.faa.gov/xwiki/bin/view/NFDC/28+Day+NASR+Subscription" >&2
+  echo " Download most recent data from https://www.faa.gov/air_traffic/flight_info/aeronav/aero_data/NASR_Subscription/" >&2
   exit 1
 fi
 
@@ -114,9 +114,9 @@ find "$sua_input_directory" \
     --config OGR_SQLITE_CACHE 128       \
     -gt 65536                           \
     \;
-    
+
 ogrinfo "$special_use_airspace_spatialite_database" -sql "VACUUM"
-    
+
 find "$controlled_airspace_input_directory" \
   -iname "*.shp"    \
   -type f           \
