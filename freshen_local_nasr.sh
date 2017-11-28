@@ -62,5 +62,5 @@ set +e
         --timestamping      \
         --ignore-case       \
         --accept-regex '.*/xwiki/bin/view/NFDC/28.*|.*28DaySubscription.*.zip'    \
-        https://nfdc.faa.gov/xwiki/bin/view/NFDC/28+Day+NASR+Subscription
+        https://www.faa.gov/air_traffic/flight_info/aeronav/aero_data/NASR_Subscription/
 set -e
