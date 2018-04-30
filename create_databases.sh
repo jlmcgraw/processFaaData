@@ -56,14 +56,14 @@ if [ ! -d "$controlled_airspace_input_directory" ]; 	then
 # Delete any existing files
 rm --force "$nasr_database"
 rm --force "$nasr_spatialite_database"
-rm --force ./DAILY_DOF.ZIP ./DOF.DAT
+rm --force ./DAILY_DOF_DAT.ZIP ./DOF.DAT
 rm --force "$controlled_airspace_spatialite_database"
 rm --force "$special_use_airspace_spatialite_database"
 
 # Get the daily obstacle file
 echo "---------- Download and process daily obstacle file"
-wget --timestamping http://tod.faa.gov/tod/DAILY_DOF.ZIP
-unzip DAILY_DOF.ZIP
+wget --timestamping http://aeronav.faa.gov/Obst_Data/DAILY_DOF_DAT.ZIP
+unzip DAILY_DOF_DAT.ZIP
 
 # Remove the header lines from obstacle file and put output in $datadir as "OBSTACLE.txt"
 sed '1,4d' ./DOF.DAT > $datadir/OBSTACLE.txt
