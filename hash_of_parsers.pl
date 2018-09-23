@@ -32,7 +32,8 @@ AFF => {
     facility_type:5
     frequency_associated_with_the_facility:8
     altitude_indication_of_whether_low_high_low_high_and_or_ultra_h:10
-    special_usage_name_special_usage_name_for_each_frequency:17
+    special_usage_name_special_usage_name_for_each_frequency:16
+    rcag_frequency_charted_flag:1
     location_identifier_assigned_to_the_landing_facility_airport:4
     associated_state_name:30
     associated_state_post_office_code:2
@@ -202,7 +203,8 @@ AFF => {
     other_airport_services_available:71
     wind_indicator:3
     icao_identifier:7
-    airport_record_filler_blank:312
+    minimum_operational_network:1
+    airport_record_filler_blank:311
     ',
     'RWY' => '
     record_type_indicator:3
@@ -411,6 +413,11 @@ AFF => {
     point_to_point_minimum_enroute_altitude_opposite_direction:5
     point_to_point_minimum_enroute_direction_opposite_direction:7
     minimum_crossing_altitude_mca_point:50
+    point_to_point_dme_dme_iru_minimum_enroute_altitude:5
+    point_to_point_dme_dme_iru_minimum_enroute_direction:6
+    point_to_point_dme_dme_iru_minimum_enroute_altitude_opposite_direction:5
+    point_to_point_dme_dme_iru_minimum_enroute_direction_opposite_direction:6
+    dogleg:1
     record_sort_sequence_number:7
     ',
     'ATS2' => '
@@ -430,7 +437,7 @@ AFF => {
     fix_minimum_reception_altitude_mra:5
     navaid_identifier:4
     reserved_from_point_part95:57
-    blanks:117
+    blanks:140
     record_sort_sequence_number:7
     ',
     'ATS3' => '
@@ -445,7 +452,7 @@ AFF => {
     navaid_facility_state_p_o_code:2
     navaid_facility_latitude:14
     navaid_facility_longitude:14
-    blanks:210
+    blanks:233
     record_sort_sequence_number:7
     ',
     'ATS4' => '
@@ -456,7 +463,7 @@ AFF => {
     ats_airway_type:1
     airway_point_sequence_number:5
     remarks_text:200
-    blanks:95
+    blanks:118
     record_sort_sequence_number:7
     ',
     'ATS5' => '
@@ -467,7 +474,7 @@ AFF => {
     airway_type:1
     airway_point_sequence_number:5
     remarks_text:200
-    blanks:95
+    blanks:118
     record_sort_sequence_number:7
     ',
     'RMK' => '
@@ -479,7 +486,7 @@ AFF => {
     remark_sequence_number:3
     remark_reference:5
     remarks_text:200
-    blanks:92
+    blanks:115
     record_sort_sequence_number:7
     ',
   },
@@ -550,6 +557,11 @@ AFF => {
     point_to_point_minimum_enroute_altitude_opposite_direction:5
     point_to_point_minimum_enroute_direction_opposite_direction:6
     minimum_crossing_altitude_mca_point:40
+    point_to_point_dme_dme_iru_minimum_enroute_altitude:5
+    point_to_point_dme_dme_iru_minimum_enroute_direction:6
+    point_to_point_dme_dme_iru_minimum_enroute_altitude_opposite_direction:5
+    point_to_point_dme_dme_iru_minimum_enroute_direction_opposite_direction:6
+    dogleg:1
     record_sort_sequence_number:7
     ',
     'AWY2' => '
@@ -567,7 +579,7 @@ AFF => {
     fix_minimum_reception_altitude_mra:5
     navaid_identifier:4
     reserved_from_point_part95:40
-    blanks:119
+    blanks:142
     record_sort_sequence_number:7
     ',
     'AWY3' => '
@@ -580,7 +592,7 @@ AFF => {
     navaid_facility_state_p_o_code:2
     navaid_facility_latitude:14
     navaid_facility_longitude:14
-    blanks:185
+    blanks:208
     record_sort_sequence_number:7
     ',
     'AWY4' => '
@@ -589,7 +601,7 @@ AFF => {
     airway_type:1
     airway_point_sequence_number:5
     remarks_text:202
-    blanks:62
+    blanks:85
     record_sort_sequence_number:7
     ',
     'AWY5' => '
@@ -598,7 +610,7 @@ AFF => {
     airway_type:1
     airway_point_sequence_number:5
     remarks_text:202
-    blanks:62
+    blanks:85
     record_sort_sequence_number:7
     ',
     'RMK' => '
@@ -608,7 +620,7 @@ AFF => {
     remark_sequence_number:3
     remark_reference:6
     remarks_text:220
-    blanks:40
+    blanks:63
     record_sort_sequence_number:7
     ',
   },
@@ -851,8 +863,8 @@ AFF => {
         record_type_indicator:4
     holding_pattern_name:80
     pattern_number_to_uniquely_identify_holding_pattern:3
-    charting_description:21
-    blanks:379
+    charting_description:22
+    blanks:378
     ',
     'HP3' => '
         record_type_indicator:4
@@ -1119,8 +1131,8 @@ AFF => {
     artcc_ident_19:4
     artcc_ident_20:4
     all_flight_service_station_fss_idents_within_150_nautical_miles:160
-    times_of_use_text_information:50
-    blanks:201
+    times_of_use_text_information:175
+    blanks:76
     sort_sequence_number_for_record:5
     ',
     'MTR2' => '
@@ -1172,10 +1184,10 @@ AFF => {
     agency_city:30
     agency_state_alpha_post_office_code:2
     agency_zip_code:10
-    agency_phone_number:40
-    agency_autovon_phone_number:14
-    agency_hours:40
-    blanks:238
+    agency_commercial_phone_number:40
+    agency_dsn_phone_number:40
+    agency_hours:175
+    blanks:77
     record_sort_sequence_number:5
     ',
   },
@@ -1324,6 +1336,9 @@ AFF => {
     effective_hours_gmt_description_2:15
     effective_hours_gmt_description_3:15
     route_direction_limitations_description:20
+    nar_type:20
+    designator:5
+    destination_city:40
     ',
     'PFR2' => '
         record_type_indicator:4
@@ -1339,7 +1354,7 @@ AFF => {
     navaid_facility_type_code:2
     navaid_facility_type_described:20
     radial_and_distance_from_navaid:7
-    blank:169
+    blank:234
     ',
   },
   PJA => {

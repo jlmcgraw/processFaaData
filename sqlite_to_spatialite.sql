@@ -9,6 +9,9 @@ PRAGMA synchronous=OFF;
 -- The new way
 -- See https://www.gaia-gis.it/fossil/libspatialite/wiki?name=mod_spatialite
 SELECT load_extension('mod_spatialite');
+-- 2018-06-08 added the .so extension because module stopped loading
+--            I'm leaving the original line in as well
+SELECT load_extension('mod_spatialite.so');
 SELECT InitSpatialMetadata(1);
 
 /*

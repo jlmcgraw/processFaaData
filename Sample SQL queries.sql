@@ -1,3 +1,30 @@
+-- An example spatialite query to find airspaces that a given point is inside:
+-- $ spatialite special_use_airspace_spatialite.sqlite 
+SELECT 
+    designator, name, upperLimit, lowerLimit  
+FROM 
+    Airspace 
+WHERE 
+    within(GeomFromText('POINT(-80.79 34.04)'),Airspace.Geometry);
+
+-- R6001A|R-6001A FORT JACKSON, SC|3200|GND
+-- R6001B|R-6001B FORT JACKSON, SC|230|3200
+
+-- All obstacles a certain distance from a point
+-- $ spatialite spatialite_nasr.sqlite
+SELECT
+    *
+FROM
+    OBSTACLE_OBSTACLE as obstacle
+WHERE
+    PtDistWithin( GeomFromText('POINT(-80.79 34.04)') , obstacle.obstacleGeom, .1 )
+    ;
+
+SELECT * FROM MyPoints
+WHERE PtDistWithin(Geometry,
+MakePoint(11.87691, 43.46139, 4326),
+2500.0, 1) = 1;
+
 --------------------------------------------------------------------------------
 --All VHF frequencies, including remotes and SID/STARs, for an airport
 -- Uses Common Table Expressions (CTEs)
