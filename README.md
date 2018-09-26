@@ -2,6 +2,7 @@ Create sqlite and spatialite databases from the 28-day NASR data freely provided
 
 The "spatialite_nasr.sqlite" this creates is used by my Aviation Map project and the 
 sqlite database could be directly used in any Electronic Flight Bag (EFB) program.
+
 See "Sample SQL queries.sql" for some examples of querying this database
 
 A sample spatialite version of the database can be found here: 
