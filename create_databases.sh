@@ -40,8 +40,8 @@ echo "---------- Recursively unzipping $nasr28dayFileName"
 ./recursiveUnzip.sh "$nasr28dayFileName"
 
 # Location of airspace files (after unzip as they are dynamic)
-sua_input_directory=`find $datadir -type d -name Saa_Sub_File`
-controlled_airspace_input_directory=`find $datadir -type d -name Shape_Files`
+sua_input_directory=$(find $datadir -type d -name Saa_Sub_File)
+controlled_airspace_input_directory=$(find $datadir -type d -name Shape_Files)
 
 if [ ! -d "$sua_input_directory" ]; 	then
 	echo "No Special Use Airspace information found in ${sua_input_directory}" >&2
