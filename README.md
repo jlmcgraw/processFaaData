@@ -6,7 +6,7 @@ sqlite database could be directly used in any Electronic Flight Bag (EFB) progra
 See "Sample SQL queries.sql" for some examples of querying this database
 
 A sample spatialite version of the database can be found here: 
-    https://www.dropbox.com/s/j018ph69x9nduv4/data.tar.xz
+    https://www.dropbox.com/s/ichzdozjoco4jzj/2019-09-12-nasr_databases.zip?dl=0
 
 These instructions are based on using Ubuntu 16.04
 
