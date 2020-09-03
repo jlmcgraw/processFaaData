@@ -1,7 +1,8 @@
 FROM ubuntu
-RUN apt-get update && apt-get -y install python3 wget sqlite3
 
 ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get -y install python3 wget sqlite3 build-essential 
 RUN mkdir /airport-etl
 
 COPY . /airport-etl
