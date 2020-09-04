@@ -3,13 +3,13 @@ FROM ubuntu
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get -y install python3 wget sqlite3 build-essential 
-RUN mkdir /airport-etl
+RUN mkdir /faa
 
-COPY . /airport-etl
+COPY . /faa
 
-WORKDIR /airport-etl
-RUN sh /airport-etl/setup.sh
+WORKDIR /faa
+RUN sh /faa/setup.sh
 
 VOLUME [ "/data" ]
 
-CMD ["sh","/airport-etl/start.sh"]
+CMD ["sh","/faa/start.sh"]
