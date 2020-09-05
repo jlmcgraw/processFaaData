@@ -8,6 +8,22 @@ See "Sample SQL queries.sql" for some examples of querying this database
 A sample spatialite version of the database can be found here: 
     https://www.dropbox.com/s/ichzdozjoco4jzj/2019-09-12-nasr_databases.zip?dl=0
 
+### Docker    
+
+Build the docker image
+
+```
+docker build --tag faa_nasr .
+```
+
+
+Run the docker image
+
+```
+docker run --rm -it -v /tmp/data:/data/ faa_nasr
+```
+
+### Ubuntu
 These instructions are based on using Ubuntu 16.04
 
 How to get this utility up and running:
