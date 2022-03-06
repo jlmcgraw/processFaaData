@@ -96,7 +96,7 @@ AFF => {
     landing_facility_state_post_office_code:2
     attendance_schedule_sequence_number:2
     airport_attendance_schedule:108
-    attendance_schedule_record_filler:1403
+    attendance_schedule_record_filler:1405
     ',
 
     'APT' => '
@@ -204,7 +204,7 @@ AFF => {
     wind_indicator:3
     icao_identifier:7
     minimum_operational_network:1
-    airport_record_filler_blank:311
+    airport_record_filler_blank:313
     ',
     'RWY' => '
     record_type_indicator:3
@@ -341,7 +341,7 @@ AFF => {
     reciprocal_longitude_of_lahso_hold_short_point_seconds:12
     reciprocal_lahso_hold_short_point_lat_long_source:16
     reciprocal_hold_short_point_lat_long_source_date_mm_dd_yyyy:10
-    runway_record_filler_blank:388
+    runway_record_filler_blank:390
     ',
 
     'ARS' => '
@@ -351,13 +351,13 @@ AFF => {
     runway_identification:7
     runway_end_identifier:3
     type_of_aircraft_arresting_device:9
-    arresting_system_record_filler_blank:1494
+    arresting_system_record_filler_blank:1496
     ',
     'RMK' => '
     record_type_indicator:3
     landing_facility_site_number:11
     landing_facility_state_post_office_code:2
-    remark_element_name:13
+    remark_element_name:15
     remark_text:1500
     '
   },
@@ -418,6 +418,7 @@ AFF => {
     point_to_point_dme_dme_iru_minimum_enroute_altitude_opposite_direction:5
     point_to_point_dme_dme_iru_minimum_enroute_direction_opposite_direction:6
     dogleg:1
+    rnp_format:5
     record_sort_sequence_number:7
     ',
     'ATS2' => '
@@ -437,7 +438,7 @@ AFF => {
     fix_minimum_reception_altitude_mra:5
     navaid_identifier:4
     reserved_from_point_part95:57
-    blanks:140
+    blanks:145
     record_sort_sequence_number:7
     ',
     'ATS3' => '
@@ -452,7 +453,7 @@ AFF => {
     navaid_facility_state_p_o_code:2
     navaid_facility_latitude:14
     navaid_facility_longitude:14
-    blanks:233
+    blanks:238
     record_sort_sequence_number:7
     ',
     'ATS4' => '
@@ -463,7 +464,7 @@ AFF => {
     ats_airway_type:1
     airway_point_sequence_number:5
     remarks_text:200
-    blanks:118
+    blanks:123
     record_sort_sequence_number:7
     ',
     'ATS5' => '
@@ -474,7 +475,7 @@ AFF => {
     airway_type:1
     airway_point_sequence_number:5
     remarks_text:200
-    blanks:118
+    blanks:123
     record_sort_sequence_number:7
     ',
     'RMK' => '
@@ -486,7 +487,7 @@ AFF => {
     remark_sequence_number:3
     remark_reference:5
     remarks_text:200
-    blanks:115
+    blanks:120
     record_sort_sequence_number:7
     ',
   },
@@ -562,6 +563,7 @@ AFF => {
     point_to_point_dme_dme_iru_minimum_enroute_altitude_opposite_direction:5
     point_to_point_dme_dme_iru_minimum_enroute_direction_opposite_direction:6
     dogleg:1
+    rnp_format:5
     record_sort_sequence_number:7
     ',
     'AWY2' => '
@@ -579,7 +581,7 @@ AFF => {
     fix_minimum_reception_altitude_mra:5
     navaid_identifier:4
     reserved_from_point_part95:40
-    blanks:142
+    blanks:147
     record_sort_sequence_number:7
     ',
     'AWY3' => '
@@ -592,7 +594,7 @@ AFF => {
     navaid_facility_state_p_o_code:2
     navaid_facility_latitude:14
     navaid_facility_longitude:14
-    blanks:208
+    blanks:213
     record_sort_sequence_number:7
     ',
     'AWY4' => '
@@ -601,7 +603,7 @@ AFF => {
     airway_type:1
     airway_point_sequence_number:5
     remarks_text:202
-    blanks:85
+    blanks:90
     record_sort_sequence_number:7
     ',
     'AWY5' => '
@@ -610,7 +612,7 @@ AFF => {
     airway_type:1
     airway_point_sequence_number:5
     remarks_text:202
-    blanks:85
+    blanks:90
     record_sort_sequence_number:7
     ',
     'RMK' => '
@@ -620,7 +622,7 @@ AFF => {
     remark_sequence_number:3
     remark_reference:6
     remarks_text:220
-    blanks:63
+    blanks:68
     record_sort_sequence_number:7
     ',
   },
@@ -808,26 +810,27 @@ AFF => {
     #bug todo: continuation records not implemented
     '*' => '                     ',
   },
-  HARFIX => {
-    'HARFIX' => '
-        fix_navaid_id:77
-    blank_character_separating_fields1:1
-    fix_navaid_latitude_format_ddmmss_ssssx:12
-    blank_character_separating_fields2:1
-    fix_navaid_longitude_format_dddmmss_ssssx:13
-    blank_character_separating_fields3:1
-    type:1
-    blank_character_separating_fields4:1
-    class_of_navaid:11
-    blank_character_separating_fields5:1
-    pitch_point:1
-    blank_character_separating_fields6:1
-    catch_point:1
-    blank_character_separating_fields7:1
-    sua_atcaa_waypoint:1
-    ',
 
-  },
+  #HARFIX => {
+  #  'HARFIX' => '
+  #      fix_navaid_id:77
+  #  blank_character_separating_fields1:1
+  #  fix_navaid_latitude_format_ddmmss_ssssx:12
+  #  blank_character_separating_fields2:1
+  #  fix_navaid_longitude_format_dddmmss_ssssx:13
+  #  blank_character_separating_fields3:1
+  #  type:1
+  #  blank_character_separating_fields4:1
+  #  class_of_navaid:11
+  #  blank_character_separating_fields5:1
+  #  pitch_point:1
+  #  blank_character_separating_fields6:1
+  #  catch_point:1
+  #  blank_character_separating_fields7:1
+  #  sua_atcaa_waypoint:1
+  #  ',
+  #
+  #  },
   HPF => {
     'HP1' => '
         record_type_indicator:4
@@ -1191,26 +1194,27 @@ AFF => {
     record_sort_sequence_number:5
     ',
   },
-  NATFIX => {
-    'NATFIX' => '
-        character_i_that_indicates_beginning_of_record:1
-    blank_character_separating_fields1:1
-    fix_navaid_airport_id:5
-    blank_character_separating_fields2:1
-    fix_navaid_airport_latitude_format_ddmmssx:7
-    blank_character_separating_fields3:1
-    fix_navaid_airport_longitude_format_dddmmssx:8
-    blank_character_separating_fields4:1
-    single_quote_character_that_precedes_artcc_id:1
-    artcc_id:4
-    blank_character_separating_fields5:1
-    state_post_office_code:2
-    blank_character_separating_fields6:1
-    icao_region_code:2
-    blank_character_separating_fields7:1
-    fix_navaid_type_or_string_arpt:7
-    ',
-  },
+
+  #NATFIX => {
+  #  'NATFIX' => '
+  #      character_i_that_indicates_beginning_of_record:1
+  #  blank_character_separating_fields1:1
+  #  fix_navaid_airport_id:5
+  #  blank_character_separating_fields2:1
+  #  fix_navaid_airport_latitude_format_ddmmssx:7
+  #  blank_character_separating_fields3:1
+  #  fix_navaid_airport_longitude_format_dddmmssx:8
+  #  blank_character_separating_fields4:1
+  #  single_quote_character_that_precedes_artcc_id:1
+  #  artcc_id:4
+  #  blank_character_separating_fields5:1
+  #  state_post_office_code:2
+  #  blank_character_separating_fields6:1
+  #  icao_region_code:2
+  #  blank_character_separating_fields7:1
+  #  fix_navaid_type_or_string_arpt:7
+  #  ',
+  # },
   NAV => {
     'NAV1' => '
     record_type_indicator:4
@@ -1257,7 +1261,8 @@ AFF => {
     transmitted_fan_marker_marine_radio_beacon_identifier:24
     fan_marker_type_bone_or_elliptical:10
     true_bearing_of_major_axis_of_fan_marker:3
-    protected_frequency_altitude:1
+    vor_standard_service_volume:2
+    dme_standard_service_volume:2
     low_altitude_facility_used_in_high_structure:3
     navaid_z_marker_available_y_n_or_null:3
     transcribed_weather_broadcast_hours_tweb:9
@@ -1280,7 +1285,7 @@ AFF => {
     navaid_facility_identifier:4
     navaid_facitity_type:20
     navaid_remarks_free_form_text:600
-    filler:174
+    filler:177
     ',
     'NAV3' => '
         record_type_indicator:4
@@ -1288,7 +1293,7 @@ AFF => {
     navaid_facitity_type:20
     names_of_fixes_fix_file:36
     space_allocated_for_20_more_fixes:720
-    blanks:18
+    blanks:21
     ',
     'NAV4' => '
         record_type_indicator:4
@@ -1297,7 +1302,7 @@ AFF => {
     names_of_holding_patterns_and_the_state_in_which_the_holding:80
     pattern_number_of_the_holding_pattern:3
     space_allocated_for_8_more_holding_patterns:664
-    blanks:27
+    blanks:30
     ',
     'NAV5' => '
         record_type_indicator:4
@@ -1305,7 +1310,7 @@ AFF => {
     navaid_facitity_type:20
     names_of_fan_marker_s:30
     space_allocated_for_23_more_fan_markers:690
-    blanks:54
+    blanks:57
     ',
     'NAV6' => '
         record_type_indicator:4
@@ -1318,7 +1323,7 @@ AFF => {
     state_code_in_which_associated_city_is_located:2
     narrative_description_associated_with_the_checkpoint_in_air:75
     narrative_description_associated_with_the_checkpoint_on_ground:75
-    blanks:608
+    blanks:611
     ',
   },
   PFR => {
@@ -1421,21 +1426,22 @@ AFF => {
     blanks:163
     ',
   },
-  SSD => {
-    'SSD' => '
-        internal_sequence_number:5
-    not_used1:5
-    fix_facility_type_code:2
-    not_used2:1
-    fix_navaid_airport_latitude_format_xddmmsst:8
-    fix_navaid_airport_longitude_format_xdddmmsst:9
-    fix_navaid_airport_identifier:6
-    icao_region_code_fix_only:2
-    star_sid_computer_code:13
-    star_sid_transition_name:110
-    airways_navaids_using_numbered_fix:62
-    ',
-  },
+
+  #SSD => {
+  #  'SSD' => '
+  #      internal_sequence_number:5
+  #  not_used1:5
+  #  fix_facility_type_code:2
+  #  not_used2:1
+  #  fix_navaid_airport_latitude_format_xddmmsst:8
+  #  fix_navaid_airport_longitude_format_xdddmmsst:9
+  #  fix_navaid_airport_identifier:6
+  #  icao_region_code_fix_only:2
+  #  star_sid_computer_code:13
+  #  star_sid_transition_name:110
+  #  airways_navaids_using_numbered_fix:62
+  #  ',
+  #},
   STARDP => {
     'STARDP' => '
         internal_sequence_number:5
@@ -1628,7 +1634,7 @@ AFF => {
     weather_reporting_location_identifier:5
     latitude_of_the_weather_reporting_location:8
     longitude_of_the_weather_reporting_location:9
-    associated_city:26
+    associated_city:40
     associated_state_post_office_code:2
     associated_country_numeric_code_non_us_only:3
     weather_reporting_location_elevation_value_whole_feet_msl:5
