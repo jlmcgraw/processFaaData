@@ -2,7 +2,6 @@
 
 #Install necessary software
 apt install -y \
-                    git \
                     sqlite3 \
                     libspatialite-dev \
                     spatialite-bin \
