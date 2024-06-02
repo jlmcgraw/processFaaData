@@ -208,6 +208,8 @@ definitions = {
             "icao_identifier": 7,
             "minimum_operational_network": 1,
             "airport_record_filler_blank": 313,
+            "apt_latitude": 0,
+            "apt_longitude": 0,
         },
         "RWY": {
             "record_type_indicator": 3,
@@ -1741,6 +1743,8 @@ definitions = {
             "blank21": 1,
             "julian_date": 7,
             "blank22": 1,
+            "obstacle_latitude": 0,
+            "obstacle_longitude": 0,
         }
     },
 }
