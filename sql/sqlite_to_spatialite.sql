@@ -267,13 +267,13 @@ SELECT InitSpatialMetadata(1);
                                 4326);
 
 --STARs and SIDs (SSD)
-        SELECT AddGeometryColumn( 'SSD_SSD' , 'geometry' , 4326, 'POINT');
-        SELECT CreateSpatialIndex( 'SSD_SSD' , 'geometry'  );
-        UPDATE SSD_SSD
-                SET geometry = MakePoint(
-                                CAST (longitude AS DOUBLE),
-                                CAST (latitude AS DOUBLE),
-                                4326);
+--        SELECT AddGeometryColumn( 'SSD_SSD' , 'geometry' , 4326, 'POINT');
+--        SELECT CreateSpatialIndex( 'SSD_SSD' , 'geometry'  );
+--        UPDATE SSD_SSD
+--                SET geometry = MakePoint(
+--                                CAST (longitude AS DOUBLE),
+--                                CAST (latitude AS DOUBLE),
+--                                4326);
 
 --STARs and SIDs (STARDP)
         SELECT AddGeometryColumn( 'STARDP_STARDP' , 'geometry' , 4326, 'POINT');
