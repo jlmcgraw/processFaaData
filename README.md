@@ -25,4 +25,8 @@ The script has three optional flags:
 - `e`: Expand. This expands abbreviations in various files to their full values (`RMK` to `Remark`, for example).
 - `g`: Geometry. This converts the NASR data to spatialite.
 
+While the script will automatically purge the old data before downloading new data, there is an additional `clean.sh` script available if you would like to quickly purge the data without waiting until the next import.
+
+### NOTE
+
 This software and the data it produces come with no guarantees about accuracy or usefulness whatsoever! Don't use it when your life may be on the line!
