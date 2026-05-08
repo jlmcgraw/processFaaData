@@ -112,7 +112,6 @@ find "$sua_input_directory" \
     -lco LAUNDER=NO         \
     --config OGR_SQLITE_SYNCHRONOUS OFF \
     --config OGR_SQLITE_CACHE 128       \
-    -gt 65536                           \
     \;
 
 ogrinfo "$special_use_airspace_spatialite_database" -sql "VACUUM"
@@ -136,7 +135,6 @@ find "$controlled_airspace_input_directory" \
     -nlt MULTIPOLYGONZ      \
     --config OGR_SQLITE_SYNCHRONOUS OFF \
     --config OGR_SQLITE_CACHE 128       \
-    -gt 65536                           \
     -progress  \
   \;
 
