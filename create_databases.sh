@@ -22,7 +22,7 @@ if [ ! -f "$nasr28dayFileName" ]; 	then
 	fi
 
 # Get command line parameter and construct the full path to the unzipped data
-datadir=$(readlink -m "$(dirname "$nasr28dayFileName")")
+datadir=$(cd "$(dirname "$nasr28dayFileName")" && pwd)
 datadir+="/"
 datadir+=$(basename "$nasr28dayFileName" .zip)
 datadir+="/"
@@ -54,11 +54,11 @@ if [ ! -d "$controlled_airspace_input_directory" ]; 	then
  	fi
 
 # Delete any existing files
-rm --force "$nasr_database"
-rm --force "$nasr_spatialite_database"
-rm --force ./DAILY_DOF_DAT.ZIP ./DOF.DAT
-rm --force "$controlled_airspace_spatialite_database"
-rm --force "$special_use_airspace_spatialite_database"
+rm -f "$nasr_database"
+rm -f "$nasr_spatialite_database"
+rm -f ./DAILY_DOF_DAT.ZIP ./DOF.DAT
+rm -f "$controlled_airspace_spatialite_database"
+rm -f "$special_use_airspace_spatialite_database"
 
 # Get the daily obstacle file
 echo "---------- Download and process daily obstacle file"
@@ -80,9 +80,18 @@ sqlite3 "$nasr_database" < add_indexes.sql
 echo "---------- Create the spatialite version of database"
 cp "$nasr_database" "$nasr_spatialite_database"
 
-# Convert the copy to spatialite
+# Convert the copy to spatialite. macOS system sqlite3 has
+# SQLITE_OMIT_LOAD_EXTENSION; need a binary that supports load_extension.
+# Prefer Homebrew's sqlite when present.
+SQLITE_BIN=sqlite3
+if [ -x /opt/homebrew/opt/sqlite/bin/sqlite3 ]; then
+    SQLITE_BIN=/opt/homebrew/opt/sqlite/bin/sqlite3
+fi
+# sqlite_to_spatialite.sql tries multiple paths for mod_spatialite; the
+# unsuccessful candidates emit "Error near line ..." messages and return
+# nonzero, but the build still completes via whichever path resolves first.
 set +e
-sqlite3 "$nasr_spatialite_database" < sqlite_to_spatialite.sql
+"$SQLITE_BIN" "$nasr_spatialite_database" < sqlite_to_spatialite.sql
 set -e
 
 # Lump the airspaces into spatialite databases
