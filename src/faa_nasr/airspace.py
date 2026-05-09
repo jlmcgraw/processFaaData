@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 import sqlite3
 import warnings
+import xml.etree.ElementTree as ET
 import zipfile
 from collections import defaultdict
 from pathlib import Path
@@ -19,6 +20,22 @@ import pyogrio.raw
 from tqdm import tqdm
 
 from faa_nasr import _log
+
+# AIXM top-level feature element names that pyogrio surfaces as separate layers.
+# Used to identify entity boundaries when walking the XML for FK extraction.
+_AIXM_FEATURES = frozenset(
+    {
+        "Airspace",
+        "Unit",
+        "OrganisationAuthority",
+        "AirTrafficControlService",
+        "AirspaceUsage",
+        "RadioCommunicationChannel",
+        "InformationService",
+    }
+)
+_GML_NS = "{http://www.opengis.net/gml/3.2}"
+_XLINK_NS = "{http://www.w3.org/1999/xlink}"
 
 # OGR emits "Non closed ring detected" warnings on some SAA AIXM polygons.
 # We can't fix the source data and pyogrio still returns the geometry, so the
@@ -92,8 +109,10 @@ def _build_sua(nasr_dir: Path, dst: Path) -> None:
     # without setting up geometry_columns.
     _init_spatialite_db(dst)
 
-    # Pass 1: discover layers across all XMLs, group by source-layer name.
+    # Pass 1: discover layers AND extract XLink relationships per XML in one walk.
+    # fk_per_xml[xml] -> {(feature_type, gml_id): {rel_name: target_uuid}}
     layer_buckets: dict[str, list[tuple[Path, str]]] = defaultdict(list)
+    fk_per_xml: dict[Path, dict[tuple[str, str], dict[str, str]]] = {}
     for xml in tqdm(
         xml_files, desc="  scanning XMLs", unit="file", disable=_log.is_quiet(), leave=False
     ):
@@ -102,6 +121,10 @@ def _build_sua(nasr_dir: Path, dst: Path) -> None:
                 layer_buckets[str(source_layer)].append((xml, str(source_layer)))
         except Exception:
             continue
+        try:
+            fk_per_xml[xml] = _extract_xlinks(xml)
+        except ET.ParseError:
+            fk_per_xml[xml] = {}
 
     # Pass 2: read + concat + write each merged layer (no spatial index yet).
     geometry_layers: list[str] = []
@@ -116,7 +139,9 @@ def _build_sua(nasr_dir: Path, dst: Path) -> None:
     for source_name, sources in bar:
         bar.set_postfix_str(source_name, refresh=False)
         target = _safe_name(source_name)
-        n, has_geom = _merge_and_write_layer(dst=dst, sources=sources, target_layer=target)
+        n, has_geom = _merge_and_write_layer(
+            dst=dst, sources=sources, target_layer=target, fk_per_xml=fk_per_xml
+        )
         if n > 0:
             total_features += n
             if has_geom:
@@ -178,7 +203,10 @@ def _copy_shapefile(src: Path, dst: Path, layer_name: str) -> int:
 
 
 def _merge_and_write_layer(
-    dst: Path, sources: list[tuple[Path, str]], target_layer: str
+    dst: Path,
+    sources: list[tuple[Path, str]],
+    target_layer: str,
+    fk_per_xml: dict[Path, dict[tuple[str, str], dict[str, str]]],
 ) -> tuple[int, bool]:
     """Read every (xml, source_layer) source, concat in memory, write once.
 
@@ -189,6 +217,10 @@ def _merge_and_write_layer(
 
     For layers with no geometry across all sources, we fall back to a plain
     sqlite3 INSERT path since pyogrio.raw.write requires a valid geometry array.
+
+    `fk_per_xml` carries the resolved XLink targets per XML; we use it to add
+    a column per relationship name (e.g. `clientAirspace`, `serviceProvider`)
+    to the merged table, holding the target entity's `identifier` UUID.
     """
     geom_chunks: list[np.ndarray] = []
     field_chunks: dict[str, list[np.ndarray]] = defaultdict(list)
@@ -199,6 +231,11 @@ def _merge_and_write_layer(
     sources_seen: list[Path] = []
     field_order: list[str] = []  # preserve first-seen field order for determinism
     field_seen: set[str] = set()
+    # FK columns are added in the order their relationship names are first seen.
+    fk_order: list[str] = []
+    fk_seen: set[str] = set()
+    fk_chunks: dict[str, list[np.ndarray]] = defaultdict(list)
+    feature_type = sources[0][1] if sources else None
 
     for xml, source_layer in sources:
         try:
@@ -236,6 +273,32 @@ def _merge_and_write_layer(
             else:
                 field_chunks[name].append(np.array([None] * n_rows, dtype=object))
 
+        # Resolve per-row XLink FKs for this source. pyogrio's gml_id field
+        # carries the AIXM feature's gml:id, which keys into fk_per_xml.
+        gml_ids = present.get("gml_id")
+        fk_lookup = fk_per_xml.get(xml, {})
+        per_row_fks: list[dict[str, str]] = []
+        for i in range(n_rows):
+            gml = str(gml_ids[i]) if gml_ids is not None else ""
+            per_row_fks.append(fk_lookup.get((feature_type, gml), {}))
+
+        for fks in per_row_fks:
+            for name in fks:
+                if name not in fk_seen:
+                    fk_order.append(name)
+                    fk_seen.add(name)
+
+        # Backfill any newly-seen FK columns for prior sources.
+        for fk_name in fk_order:
+            chunks = fk_chunks[fk_name]
+            if len(chunks) < len(sources_seen):
+                for prior_n in source_row_counts[len(chunks) :]:
+                    chunks.append(np.array([None] * prior_n, dtype=object))
+
+        for fk_name in fk_order:
+            col = np.array([fks.get(fk_name) for fks in per_row_fks], dtype=object)
+            fk_chunks[fk_name].append(col)
+
         if geometry is not None and len(geometry) == n_rows:
             geom_chunks.append(geometry)
         else:
@@ -251,10 +314,13 @@ def _merge_and_write_layer(
     field_data = [np.concatenate(field_chunks[name]) for name in field_order]
     has_geometry = bool(geom_type) and any(g is not None for g in geom)
 
-    # Append the per-row source-XML stem so callers can look up which airspace
-    # each row came from (the AIXM `identifier` field is a UUID, not the name).
-    fields_with_src = field_order + ["_source_xml"]
-    field_data_with_src = field_data + [np.array(source_xmls, dtype=object)]
+    # Append FK columns (each holds the target entity's identifier UUID), then
+    # the per-row source-XML stem so callers can look up which airspace each
+    # row came from. _source_xml is the human-readable label; the FK columns
+    # are the precise XLink-derived foreign keys.
+    fk_columns = [np.concatenate(fk_chunks[name]) for name in fk_order]
+    fields_with_src = field_order + fk_order + ["_source_xml"]
+    field_data_with_src = field_data + fk_columns + [np.array(source_xmls, dtype=object)]
 
     if has_geometry:
         pyogrio.raw.write(
@@ -275,6 +341,56 @@ def _merge_and_write_layer(
         _write_attribute_only_table(dst, target_layer, fields_with_src, field_data_with_src)
 
     return len(source_xmls), has_geometry
+
+
+def _extract_xlinks(xml_path: Path) -> dict[tuple[str, str], dict[str, str]]:
+    """Walk an AIXM XML once and resolve XLink references to UUIDs.
+
+    Returns a map from (feature_type, gml_id) to {relationship_name: target_uuid}.
+    For example, an `AirTrafficControlService` element with a child
+    `<serviceProvider xlink:href="#Unit1"/>` -- where Unit1 has identifier
+    UUID `abc-...` -- yields:
+
+        {("AirTrafficControlService", "AirTrafficControlService1"):
+            {"serviceProvider": "abc-..."}}
+    """
+    tree = ET.parse(xml_path)
+    root = tree.getroot()
+
+    # Pass A: build gml_id -> identifier (UUID) map, looking only at top-level
+    # AIXM features (children of <hasMember>).
+    gml_to_uuid: dict[str, str] = {}
+    for elem in root.iter():
+        tag = elem.tag.rsplit("}", 1)[-1]
+        if tag not in _AIXM_FEATURES:
+            continue
+        gml_id = elem.get(f"{_GML_NS}id")
+        if not gml_id:
+            continue
+        # Find the direct <identifier> child (its text is the UUID).
+        for child in elem:
+            if child.tag.rsplit("}", 1)[-1] == "identifier" and child.text:
+                gml_to_uuid[gml_id] = child.text.strip()
+                break
+
+    # Pass B: for every xlink:href, locate the topmost AIXM-feature ancestor
+    # and record (feature, gml_id) -> {parent_element_tag: target_uuid}.
+    fk_map: dict[tuple[str, str], dict[str, str]] = {}
+
+    def walk(elem: ET.Element, top: tuple[str, str] | None) -> None:
+        tag = elem.tag.rsplit("}", 1)[-1]
+        if tag in _AIXM_FEATURES:
+            top = (tag, elem.get(f"{_GML_NS}id") or "")
+        href = elem.get(f"{_XLINK_NS}href")
+        if href and top is not None:
+            target_uuid = gml_to_uuid.get(href.lstrip("#"))
+            if target_uuid:
+                fk_map.setdefault(top, {})[tag] = target_uuid
+        for child in elem:
+            walk(child, top)
+
+    walk(root, None)
+    return fk_map
 
 
 def _init_spatialite_db(dst: Path) -> None:

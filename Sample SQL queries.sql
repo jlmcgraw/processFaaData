@@ -34,17 +34,32 @@ WHERE
     Within(GeomFromText('POINT(-80.79 34.04)', 4326), GEOMETRY);
 
 --------------------------------------------------------------------------------
--- Join Airspace polygons to their controlling Unit using `_source_xml` --
--- the per-airspace metadata tables (Unit, OrganisationAuthority, etc.) all
--- carry the same `_source_xml` value as their parent Airspace row.
+-- Find the controlling unit and owning organisation for each airspace in a
+-- state, joining via the AIXM XLink-derived foreign keys (UUIDs):
+--
+--   Airspace <- AirTrafficControlService.clientAirspace
+--   AirTrafficControlService.serviceProvider -> Unit
+--   Unit.ownerOrganisation -> OrganisationAuthority
+--
+-- Every metadata table also carries _source_xml for human-readable lookup
+-- (e.g. "R-6001A FORT JACKSON, SC"); the UUID joins below are the precise
+-- relationships from the source AIXM, not file-name string matches.
 --------------------------------------------------------------------------------
-SELECT
+-- DISTINCT collapses the per-airspace duplication: shared metadata entities
+-- (Unit, OrganisationAuthority, ...) are re-declared in every XML that
+-- references them, so the joined product is much wider than you'd expect.
+-- Dedup-on-write would lose information (per-XML timing fields differ), so
+-- the build keeps every row and we collapse at query time.
+SELECT DISTINCT
     a.designator,
-    a.name,
-    u.name AS controlling_unit
+    a.name             AS airspace,
+    u.name             AS controlling_unit,
+    o.name             AS owning_organisation
 FROM
-    Airspace AS a
-    LEFT JOIN Unit AS u ON u._source_xml = a._source_xml
+    Airspace                  AS a
+    LEFT JOIN AirTrafficControlService AS atc ON atc.clientAirspace   = a.identifier
+    LEFT JOIN Unit                     AS u   ON u.identifier         = atc.serviceProvider
+    LEFT JOIN OrganisationAuthority    AS o   ON o.identifier         = u.ownerOrganisation
 WHERE
     a.administrativeArea = 'ALABAMA'
 ORDER BY
