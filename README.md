@@ -1,52 +1,70 @@
-Create sqlite and spatialite databases from the 28-day NASR data freely provided by the FAA 
+# faa-nasr
 
-The "spatialite_nasr.sqlite" this creates is used by my Aviation Map project and the 
-sqlite database could be directly used in any Electronic Flight Bag (EFB) program.
+Build SQLite and SpatiaLite databases from the FAA's 28-day NASR CSV
+subscription. The output databases can be queried directly or used as a data
+source by Electronic Flight Bag (EFB) software, mapping projects, etc.
 
-See "Sample SQL queries.sql" for some examples of querying this database
+The pipeline produces four files:
 
-A sample spatialite version of the database can be found here: 
-    https://www.dropbox.com/s/ichzdozjoco4jzj/2019-09-12-nasr_databases.zip?dl=0
+| File | Contents |
+|---|---|
+| `nasr.sqlite` | One SQLite table per NASR CSV (e.g. `APT_BASE`, `APT_RWY`, `NAV_BASE`, `FIX_BASE`, `OBSTACLE`). |
+| `spatialite_nasr.sqlite` | Same as above plus SpatiaLite POINT geometry columns and spatial indexes for the airport, navaid, fix, AWOS, ILS, FSS, ATC, holding-pattern, and obstacle tables. |
+| `controlled_airspace_spatialite.sqlite` | Class B/C/D/E controlled airspace polygons, from `Class_Airspace.shp`. |
+| `special_use_airspace_spatialite.sqlite` | Special use airspace (MOAs, restricted/prohibited areas, etc.) from the SAA AIXM XML. |
 
-### Docker    
+## Quick start (recommended: containerized)
 
-Build the docker image
+The easiest way to run this is in a container — it brings its own
+`mod_spatialite` and bundled GDAL via `pyogrio`, so you don't need to install
+anything on the host.
 
+Works with both Apple's `container` CLI and Docker:
+
+```sh
+# Build the image
+container build -t faa-nasr .       # or: docker build -t faa-nasr .
+
+# Download + build everything into ./out (takes a few minutes; ~250 MB download)
+mkdir -p out
+container run --rm -v "$PWD/out":/data faa-nasr build --out /data --work-dir /data/work
 ```
-docker build --tag faa_nasr .
+
+After it finishes, `out/` contains the four `.sqlite` files.
+
+## CLI
+
+```sh
+nasr fetch          [--out DIR] [--edition current|next] [--obstacles/--no-obstacles]
+nasr build-tables   <csv-dir>     [--db nasr.sqlite] [--obstacle-csv DOF.CSV]
+nasr build-spatial  <src.sqlite>  [--db spatialite_nasr.sqlite]
+nasr build-airspace <nasr-dir>    [--out DIR]
+nasr build                        [--out DIR] [--work-dir DIR] [--edition current|next]
 ```
 
+`build` is the end-to-end pipeline (fetch → build-tables → build-spatial →
+build-airspace). The intermediate subcommands let you run from already-extracted
+data when iterating.
 
-Run the docker image
+## Local (non-container) install
 
+Requires Python 3.12+, [`uv`](https://docs.astral.sh/uv/), and (for
+`build-spatial`) the `mod_spatialite` SQLite extension installed somewhere
+the loader can find it.
+
+```sh
+uv sync
+uv run nasr --help
 ```
-docker run --rm -it -v /tmp/data:/data/ faa_nasr
-```
 
-### Ubuntu
-These instructions are based on using Ubuntu 16.04
+On macOS, install spatialite with `brew install libspatialite`. Note that the
+system `/usr/bin/sqlite3` is built without `--enable-loadable-sqlite-extensions`,
+so the spatial step requires Python's stdlib `sqlite3` (which supports it) or
+Homebrew's sqlite — but Python is what this CLI uses, so that's automatic.
 
-How to get this utility up and running:
+## Disclaimer
 
-	Install git
-		sudo apt-get install git
+This software and the data it produces come with no guarantees about accuracy
+or usefulness whatsoever! Don't use it when your life may be on the line.
 
-	Download the repository
-		git clone https://github.com/jlmcgraw/processFaaData.git
-
-	Run setup.sh to install necessary dependencies using Carton
-		./setup.sh
-
-    Download the latest NASR and obstacle data
-        ./freshen_local_nasr.sh ./local_data
-    
-    Create the sqlite and spatialite databases from the source FAA data
-        create_databases.sh <name of 28 day .zip file>
-            eg: "create_databases.sh ./local_data/nfdc.faa.gov/webContent/28DaySub/28DaySubscription_Effective_2017-10-12.zip"
-
-This software and the data it produces come with no guarantees about accuracy or usefulness whatsoever!  Don't use it when your life may be on the line!
-
-Thanks for trying this out!  If you have any feedback, ideas or patches please submit them to github.
-
--Jesse McGraw
-jlmcgraw@gmail.com
+— Jesse McGraw, jlmcgraw@gmail.com
