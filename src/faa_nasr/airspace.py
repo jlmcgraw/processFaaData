@@ -1,4 +1,4 @@
-"""Convert controlled-airspace shapefiles and SAA AIXM XML into spatialite databases.
+"""Convert class-airspace shapefiles and SAA AIXM XML into spatialite databases.
 
 Uses pyogrio's low-level numpy-based read/write API rather than read_dataframe so
 we don't need geopandas + pandas at runtime.
@@ -45,7 +45,7 @@ warnings.filterwarnings("ignore", message="Non closed ring detected", module="py
 # Reuse the spatialite extension loader from the geometry module.
 from faa_nasr.geometry import _load_mod_spatialite  # noqa: E402
 
-CONTROLLED_DB = "controlled_airspace_spatialite.sqlite"
+CLASS_AIRSPACE_DB = "class_airspace_spatialite.sqlite"
 SUA_DB = "special_use_airspace_spatialite.sqlite"
 
 
@@ -55,13 +55,16 @@ def build(nasr_dir: Path, out_dir: Path) -> None:
     out_dir = out_dir.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    _build_controlled(nasr_dir=nasr_dir, dst=out_dir / CONTROLLED_DB)
+    _build_class_airspace(nasr_dir=nasr_dir, dst=out_dir / CLASS_AIRSPACE_DB)
     _build_sua(nasr_dir=nasr_dir, dst=out_dir / SUA_DB)
 
 
-def _build_controlled(nasr_dir: Path, dst: Path) -> None:
-    """Convert all *.shp under Additional_Data/Shape_Files/ into a spatialite DB."""
-    _log.step(f"build-airspace controlled -> {dst}")
+def _build_class_airspace(nasr_dir: Path, dst: Path) -> None:
+    """Convert all *.shp under Additional_Data/Shape_Files/ into a spatialite DB.
+
+    The FAA ships Class B/C/D/E airspace as a single Class_Airspace shapefile.
+    """
+    _log.step(f"build-airspace class -> {dst}")
     shape_dir = nasr_dir / "Additional_Data" / "Shape_Files"
     if not shape_dir.is_dir():
         _log.info(f"  no Shape_Files directory under {nasr_dir} -- skipping")

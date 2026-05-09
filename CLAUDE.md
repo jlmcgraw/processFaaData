@@ -9,7 +9,7 @@ the daily DOF obstacle file into four SQLite/SpatiaLite databases:
 
 - `nasr.sqlite` — one TEXT-column table per NASR CSV.
 - `spatialite_nasr.sqlite` — same tables + POINT geometry columns and spatial indexes.
-- `controlled_airspace_spatialite.sqlite` — Class B/C/D/E polygons from `Class_Airspace.shp`.
+- `class_airspace_spatialite.sqlite` — Class B/C/D/E polygons from `Class_Airspace.shp`.
 - `special_use_airspace_spatialite.sqlite` — MOA / restricted / prohibited areas from the SAA AIXM XML.
 
 The project was rewritten from a Perl pipeline in early 2026; the input format
@@ -34,7 +34,7 @@ CLI subcommands (see `nasr <cmd> --help`):
 - `fetch` — download the current/next NASR subscription and (optionally) DAILY_DOF_CSV.ZIP.
 - `build-tables <csv-dir>` — load every `*.csv` (skipping `*_CSV_DATA_STRUCTURE.csv`) into a fresh SQLite DB.
 - `build-spatial <src>` — copy the SQLite DB and add SpatiaLite geometry + spatial indexes.
-- `build-airspace <nasr-dir>` — convert the controlled-airspace shapefile and SAA AIXM XML.
+- `build-airspace <nasr-dir>` — convert the class-airspace shapefile and SAA AIXM XML.
 - `build` — end-to-end (fetch → tables → spatial → airspace).
 
 ## Architecture
@@ -46,7 +46,7 @@ writes outputs out, and has no shared state.
 - `fetch.py` — calls `https://external-api.faa.gov/apra/nfdc/nasr/chart?edition=current` to get the SUBSCRIBER product URL, downloads it, and recursively extracts the inner `CSV_Data/<DD_MMM_YYYY>_CSV.zip`. Also pulls `https://aeronav.faa.gov/Obst_Data/DAILY_DOF_CSV.ZIP` when `--obstacles` is set.
 - `tables.py` — generic CSV loader. For each `*.csv` (excluding the schema-describing `*_CSV_DATA_STRUCTURE.csv`), reads the header, creates a TEXT-column table named after the file stem, and bulk-inserts in one transaction. The DOF.CSV becomes table `OBSTACLE`.
 - `geometry.py` — opens the SQLite DB, calls `enable_load_extension(True)`, tries multiple paths for `mod_spatialite` (Debian multi-arch first, then Homebrew), then applies a static table-to-geometry mapping (`_POINT_GEOMS`) to add `geometry POINT/4326` columns + spatial indexes for the tables that have `LAT_DECIMAL`/`LONG_DECIMAL` (or `LATDEC`/`LONDEC` for OBSTACLE).
-- `airspace.py` — uses `pyogrio.raw.read`/`write` (low-level numpy API; no geopandas dep) to copy each shapefile/AIXM layer into a SpatiaLite DB. Forces `MultiPolygon Z` (etc.) + `promote_to_multi=True` because the controlled-airspace shapefile mixes single and multi geometries in one layer. The SAA file is a zip-of-zips (outer `SaaSubscriberFile.zip` contains the AIXM schema bundle plus an inner `Saa_Sub_File.zip` with the per-airspace XML feature files), so `_extract_recursive` is used.
+- `airspace.py` — uses `pyogrio.raw.read`/`write` (low-level numpy API; no geopandas dep) to copy each shapefile/AIXM layer into a SpatiaLite DB. Forces `MultiPolygon Z` (etc.) + `promote_to_multi=True` because the class-airspace shapefile mixes single and multi geometries in one layer. The SAA file is a zip-of-zips (outer `SaaSubscriberFile.zip` contains the AIXM schema bundle plus an inner `Saa_Sub_File.zip` with the per-airspace XML feature files), so `_extract_recursive` is used.
 - `coords.py` — DMS↔decimal helpers. Rarely needed because the CSV subscription already provides decimal columns; kept as a fallback.
 
 To add support for a new NASR CSV (the FAA occasionally publishes new subjects):

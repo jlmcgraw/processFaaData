@@ -10,7 +10,7 @@ The pipeline produces four files:
 |---|---|
 | `nasr.sqlite` | One SQLite table per NASR CSV (e.g. `APT_BASE`, `APT_RWY`, `NAV_BASE`, `FIX_BASE`, `OBSTACLE`). |
 | `spatialite_nasr.sqlite` | Same as above plus SpatiaLite POINT geometry columns and spatial indexes for the airport, navaid, fix, AWOS, ILS, FSS, ATC, holding-pattern, and obstacle tables. |
-| `controlled_airspace_spatialite.sqlite` | Class B/C/D/E controlled airspace polygons, from `Class_Airspace.shp`. |
+| `class_airspace_spatialite.sqlite` | Class B/C/D/E airspace polygons, from `Class_Airspace.shp`. |
 | `special_use_airspace_spatialite.sqlite` | Special use airspace (MOAs, restricted/prohibited areas, etc.) from the SAA AIXM XML. |
 
 ## Quick start (recommended: containerized)

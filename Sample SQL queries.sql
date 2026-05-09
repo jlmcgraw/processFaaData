@@ -5,8 +5,8 @@
 -- Lat/long columns named LAT_DECIMAL / LONG_DECIMAL are signed decimal degrees.
 
 --------------------------------------------------------------------------------
--- Find which controlled airspace contains a given point.
--- $ spatialite controlled_airspace_spatialite.sqlite
+-- Find which Class B/C/D/E airspace contains a given point.
+-- $ spatialite class_airspace_spatialite.sqlite
 --------------------------------------------------------------------------------
 SELECT
     IDENT, NAME, CLASS, LOCAL_TYPE, UPPER_DESC, LOWER_DESC

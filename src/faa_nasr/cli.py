@@ -62,7 +62,7 @@ def build_airspace_cmd(
     nasr_dir: Path = typer.Argument(..., help="Top-level extracted NASR directory."),
     out_dir: Path = typer.Option(Path("."), "--out", "-o"),
 ) -> None:
-    """Convert controlled-airspace shapefiles and SAA AIXM XML into spatialite databases."""
+    """Convert class-airspace shapefiles and SAA AIXM XML into spatialite databases."""
     from faa_nasr import airspace
 
     airspace.build(nasr_dir=nasr_dir, out_dir=out_dir)
