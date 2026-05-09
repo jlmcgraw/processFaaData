@@ -346,54 +346,70 @@ def _merge_and_write_layer(
     return len(source_xmls), has_geometry
 
 
-def _extract_xlinks(xml_path: Path) -> dict[tuple[str, str], dict[str, str]]:
-    """Walk an AIXM XML once and resolve XLink references to UUIDs.
+def _local_name(elem: ET.Element) -> str:
+    """Return an element's local tag name with any XML namespace stripped."""
+    return elem.tag.rsplit("}", 1)[-1]
 
-    Returns a map from (feature_type, gml_id) to {relationship_name: target_uuid}.
-    For example, an `AirTrafficControlService` element with a child
-    `<serviceProvider xlink:href="#Unit1"/>` -- where Unit1 has identifier
-    UUID `abc-...` -- yields:
 
-        {("AirTrafficControlService", "AirTrafficControlService1"):
-            {"serviceProvider": "abc-..."}}
+def _build_gml_to_uuid_map(root: ET.Element) -> dict[str, str]:
+    """Map every top-level AIXM feature's gml:id to its <identifier> UUID.
+
+    Only elements whose local name is in `_AIXM_FEATURES` are considered;
+    nested non-feature elements are ignored even if they happen to carry a
+    gml:id (those are GML internal IDs like surface IDs).
     """
-    tree = ET.parse(xml_path)
-    root = tree.getroot()
-
-    # Pass A: build gml_id -> identifier (UUID) map, looking only at top-level
-    # AIXM features (children of <hasMember>).
-    gml_to_uuid: dict[str, str] = {}
+    out: dict[str, str] = {}
     for elem in root.iter():
-        tag = elem.tag.rsplit("}", 1)[-1]
-        if tag not in _AIXM_FEATURES:
+        if _local_name(elem) not in _AIXM_FEATURES:
             continue
         gml_id = elem.get(f"{_GML_NS}id")
         if not gml_id:
             continue
-        # Find the direct <identifier> child (its text is the UUID).
         for child in elem:
-            if child.tag.rsplit("}", 1)[-1] == "identifier" and child.text:
-                gml_to_uuid[gml_id] = child.text.strip()
+            if _local_name(child) == "identifier" and child.text:
+                out[gml_id] = child.text.strip()
                 break
+    return out
 
-    # Pass B: for every xlink:href, locate the topmost AIXM-feature ancestor
-    # and record (feature, gml_id) -> {parent_element_tag: target_uuid}.
+
+def _resolve_xlinks(
+    root: ET.Element, gml_to_uuid: dict[str, str]
+) -> dict[tuple[str, str], dict[str, str]]:
+    """Walk `root` and return resolved XLink relationships.
+
+    For each xlink:href encountered, the result records
+    (feature_type, feature_gml_id) -> {parent_element_tag: target_uuid},
+    where `parent_element_tag` is the local tag of the element carrying the
+    xlink (e.g. `serviceProvider` in `<serviceProvider xlink:href="#Unit1"/>`).
+    """
     fk_map: dict[tuple[str, str], dict[str, str]] = {}
 
     def walk(elem: ET.Element, top: tuple[str, str] | None) -> None:
-        tag = elem.tag.rsplit("}", 1)[-1]
-        if tag in _AIXM_FEATURES:
-            top = (tag, elem.get(f"{_GML_NS}id") or "")
+        local = _local_name(elem)
+        if local in _AIXM_FEATURES:
+            top = (local, elem.get(f"{_GML_NS}id") or "")
         href = elem.get(f"{_XLINK_NS}href")
         if href and top is not None:
             target_uuid = gml_to_uuid.get(href.lstrip("#"))
             if target_uuid:
-                fk_map.setdefault(top, {})[tag] = target_uuid
+                fk_map.setdefault(top, {})[local] = target_uuid
         for child in elem:
             walk(child, top)
 
     walk(root, None)
     return fk_map
+
+
+def _extract_xlinks(xml_path: Path) -> dict[tuple[str, str], dict[str, str]]:
+    """Walk an AIXM XML once and resolve XLink references to UUIDs.
+
+    Thin orchestrator: parses the file, then defers to the pure-on-Element
+    helpers `_build_gml_to_uuid_map` and `_resolve_xlinks`. Returns
+    {(feature_type, gml_id): {relationship_name: target_uuid}}.
+    """
+    root = ET.parse(xml_path).getroot()
+    gml_to_uuid = _build_gml_to_uuid_map(root)
+    return _resolve_xlinks(root, gml_to_uuid)
 
 
 def _init_spatialite_db(dst: Path) -> None:
