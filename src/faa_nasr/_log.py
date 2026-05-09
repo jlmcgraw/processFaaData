@@ -12,6 +12,10 @@ def set_quiet(quiet: bool) -> None:
     _quiet = quiet
 
 
+def is_quiet() -> bool:
+    return _quiet
+
+
 def info(msg: str) -> None:
     """One-line status update."""
     if not _quiet:

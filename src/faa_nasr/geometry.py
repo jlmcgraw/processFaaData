@@ -8,6 +8,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from tqdm import tqdm
+
 from faa_nasr import _log
 
 # Candidate paths to try for mod_spatialite. Order matters only for noise:
@@ -67,9 +69,12 @@ def build(src: Path, dst: Path) -> None:
         conn.execute("PRAGMA trusted_schema = ON")
         conn.execute("SELECT InitSpatialMetadata(1)")
         existing = _existing(_POINT_GEOMS, conn)
-        for i, geom in enumerate(existing, start=1):
-            n = _add_point_geometry(conn, geom)
-            _log.info(f"  [{i}/{len(existing)}] {geom.table:<10} {n:>9,} geometries")
+        total_geoms = 0
+        bar = tqdm(existing, desc="  geometries", unit="table", disable=_log.is_quiet(), leave=True)
+        for geom in bar:
+            bar.set_postfix_str(geom.table, refresh=False)
+            total_geoms += _add_point_geometry(conn, geom)
+        _log.info(f"  added {total_geoms:,} geometries across {len(existing)} tables")
         conn.commit()
     finally:
         conn.close()

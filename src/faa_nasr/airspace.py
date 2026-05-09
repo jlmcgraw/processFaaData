@@ -6,13 +6,21 @@ we don't need geopandas + pandas at runtime.
 
 from __future__ import annotations
 
+import re
+import warnings
 import zipfile
 from pathlib import Path
 
 import pyogrio
 import pyogrio.raw
+from tqdm import tqdm
 
 from faa_nasr import _log
+
+# OGR emits "Non closed ring detected" warnings on some SAA AIXM polygons.
+# We can't fix the source data and pyogrio still returns the geometry, so the
+# warning is just noise -- silence it instead of polluting every CLI run.
+warnings.filterwarnings("ignore", message="Non closed ring detected", module="pyogrio")
 
 CONTROLLED_DB = "controlled_airspace_spatialite.sqlite"
 SUA_DB = "special_use_airspace_spatialite.sqlite"
@@ -38,9 +46,12 @@ def _build_controlled(nasr_dir: Path, dst: Path) -> None:
     if dst.exists():
         dst.unlink()
     shapefiles = sorted(shape_dir.glob("*.shp"))
-    for i, shp in enumerate(shapefiles, start=1):
-        n = _copy_layer(src=shp, dst=dst, layer_name=shp.stem, layer=None)
-        _log.info(f"  [{i}/{len(shapefiles)}] {shp.name:<32} {n:>7,} features")
+    total_features = 0
+    bar = tqdm(shapefiles, desc="  shapefiles", unit="file", disable=_log.is_quiet(), leave=True)
+    for shp in bar:
+        bar.set_postfix_str(shp.name, refresh=False)
+        total_features += _copy_layer(src=shp, dst=dst, layer_name=_safe_name(shp.stem), layer=None)
+    _log.info(f"  wrote {len(shapefiles)} shapefiles / {total_features:,} features")
 
 
 def _build_sua(nasr_dir: Path, dst: Path) -> None:
@@ -65,17 +76,29 @@ def _build_sua(nasr_dir: Path, dst: Path) -> None:
     xml_files = [
         p for p in sorted(extract_dir.rglob("*.xml")) if "xsd" not in p.parts
     ]
-    _log.info(f"  processing {len(xml_files)} AIXM XML files")
     total_layers = 0
     total_features = 0
-    for xml in xml_files:
+    bar = tqdm(
+        xml_files,
+        desc="  AIXM XML",
+        unit="file",
+        disable=_log.is_quiet(),
+        leave=True,
+    )
+    for xml in bar:
+        bar.set_postfix_str(xml.name, refresh=False)
         try:
             layers = pyogrio.list_layers(xml)
         except Exception:
             continue
         for layer_row in layers:
             layer = str(layer_row[0])
-            n = _copy_layer(src=xml, dst=dst, layer_name=f"{xml.stem}_{layer}", layer=layer)
+            n = _copy_layer(
+                src=xml,
+                dst=dst,
+                layer_name=_safe_name(f"{xml.stem}_{layer}"),
+                layer=layer,
+            )
             if n > 0:
                 total_layers += 1
                 total_features += n
@@ -127,3 +150,17 @@ def _promote_geom_type(geom_type: str | None) -> str | None:
     if base in ("Polygon", "LineString", "Point"):
         base = "Multi" + base
     return f"{base} {suffix}".strip()
+
+
+_UNSAFE_CHARS = re.compile(r"[^A-Za-z0-9_]+")
+
+
+def _safe_name(name: str) -> str:
+    """Normalize a string for use as a SQL/SpatiaLite table name.
+
+    SpatiaLite's geometry_columns table forbids single quotes (and other
+    metadata constraints get touchy with spaces, commas, parens, hyphens).
+    Source XML filenames like "O'NEILL MOA, NE.xml" become "O_NEILL_MOA_NE".
+    """
+    cleaned = _UNSAFE_CHARS.sub("_", name).strip("_")
+    return cleaned or "layer"

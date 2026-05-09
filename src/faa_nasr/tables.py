@@ -6,6 +6,8 @@ import csv
 import sqlite3
 from pathlib import Path
 
+from tqdm import tqdm
+
 from faa_nasr import _log
 
 # CSVs whose presence describes schema, not data.
@@ -24,18 +26,20 @@ def build(csv_dir: Path, db_path: Path, obstacle_csv: Path | None = None) -> Non
         conn.execute("PRAGMA synchronous = OFF")
         conn.execute("PRAGMA journal_mode = MEMORY")
 
-        csv_files = [
-            p for p in sorted(csv_dir.glob("*.csv")) if not p.name.endswith(_STRUCTURE_SUFFIX)
+        jobs: list[tuple[Path, str]] = [
+            (p, p.stem)
+            for p in sorted(csv_dir.glob("*.csv"))
+            if not p.name.endswith(_STRUCTURE_SUFFIX)
         ]
-        total = len(csv_files) + (1 if obstacle_csv is not None else 0)
-        for i, csv_path in enumerate(csv_files, start=1):
-            n = _load_csv(conn, csv_path, table_name=csv_path.stem)
-            _log.info(f"  [{i:>3}/{total}] {csv_path.stem:<24} {n:>9,} rows")
-
         if obstacle_csv is not None:
-            n = _load_csv(conn, obstacle_csv, table_name="OBSTACLE")
-            _log.info(f"  [{total:>3}/{total}] {'OBSTACLE':<24} {n:>9,} rows")
+            jobs.append((obstacle_csv, "OBSTACLE"))
 
+        total_rows = 0
+        bar = tqdm(jobs, desc="  CSVs", unit="file", disable=_log.is_quiet(), leave=True)
+        for csv_path, table_name in bar:
+            bar.set_postfix_str(table_name, refresh=False)
+            total_rows += _load_csv(conn, csv_path, table_name=table_name)
+        _log.info(f"  loaded {total_rows:,} rows across {len(jobs)} tables")
         conn.commit()
     finally:
         conn.close()
