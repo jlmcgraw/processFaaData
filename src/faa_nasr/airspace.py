@@ -12,9 +12,11 @@ import warnings
 import xml.etree.ElementTree as ET
 import zipfile
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from operator import attrgetter
 from pathlib import Path
+from typing import TypeAlias
 
 import numpy as np
 import pyogrio
@@ -22,6 +24,19 @@ import pyogrio.raw
 from tqdm import tqdm
 
 from faa_nasr import _log
+
+# {(feature_type, gml_id): {relationship_name: target_uuid}} -- the resolved
+# XLink graph for a single AIXM XML. e.g.
+# ("AirTrafficControlService", "ATC1") -> {"clientAirspace": "uuid-..."}.
+FkLookup: TypeAlias = dict[tuple[str, str], dict[str, str]]
+
+# Mapping from XML path to that XML's resolved FK lookup.
+PerXmlFkLookup: TypeAlias = dict[Path, FkLookup]
+
+# A getter that pulls one of the column dicts off a `_SourceChunk`. Used by
+# `_stack_column` so callers can stack either the regular field columns or
+# the FK columns through the same routine without a stringly-typed selector.
+ColumnGetter: TypeAlias = Callable[["_SourceChunk"], dict[str, np.ndarray]]
 
 # AIXM top-level feature element names that pyogrio surfaces as separate layers.
 # Used to identify entity boundaries when walking the XML for FK extraction.
@@ -115,9 +130,8 @@ def _build_sua(nasr_dir: Path, dst: Path) -> None:
     _init_spatialite_db(dst)
 
     # Pass 1: discover layers AND extract XLink relationships per XML in one walk.
-    # fk_per_xml[xml] -> {(feature_type, gml_id): {rel_name: target_uuid}}
     layer_buckets: dict[str, list[tuple[Path, str]]] = defaultdict(list)
-    fk_per_xml: dict[Path, dict[tuple[str, str], dict[str, str]]] = {}
+    fk_per_xml: PerXmlFkLookup = {}
     for xml in tqdm(
         xml_files, desc="  scanning XMLs", unit="file", disable=_log.is_quiet(), leave=False
     ):
@@ -222,7 +236,7 @@ class _SourceChunk:
     fields: dict[str, np.ndarray]
     fks: dict[str, np.ndarray]
     geom_type: str | None
-    crs: object | None
+    crs: str | None  # pyogrio returns CRS strings like "EPSG:4326"
 
 
 @dataclass(frozen=True)
@@ -233,14 +247,14 @@ class _MergedLayer:
     fields: list[str]  # field columns + FK columns + ["_source_xml"]
     field_data: list[np.ndarray]  # parallel to `fields`
     geom_type: str | None
-    crs: object | None
+    crs: str | None
     has_geometry: bool
 
 
 def _read_layer_source(
     xml: Path,
     source_layer: str,
-    fk_lookup: dict[tuple[str, str], dict[str, str]],
+    fk_lookup: FkLookup,
 ) -> _SourceChunk | None:
     """Read one source via pyogrio and resolve its per-row XLink FKs.
 
@@ -294,14 +308,17 @@ def _ordered_union(*key_iterables: Iterable[str]) -> list[str]:
     return list(seen)
 
 
-def _stack_column(name: str, chunks: list[_SourceChunk], source: str) -> np.ndarray:
+def _stack_column(
+    name: str, chunks: list[_SourceChunk], getter: ColumnGetter
+) -> np.ndarray:
     """Concatenate `name` across chunks, padding chunks that lack it with None.
 
-    `source` is "fields" or "fks" -- chosen to keep call sites readable.
+    `getter` extracts the relevant column dict from each chunk -- typically
+    `attrgetter("fields")` or `attrgetter("fks")`.
     """
     parts: list[np.ndarray] = []
     for c in chunks:
-        col = (c.fields if source == "fields" else c.fks).get(name)
+        col = getter(c).get(name)
         if col is None:
             col = np.array([None] * c.n_rows, dtype=object)
         parts.append(col)
@@ -318,11 +335,14 @@ def _merge_chunks(chunks: list[_SourceChunk]) -> _MergedLayer | None:
     if not chunks:
         return None
 
+    get_fields: ColumnGetter = attrgetter("fields")
+    get_fks: ColumnGetter = attrgetter("fks")
+
     field_order = _ordered_union(*(c.fields.keys() for c in chunks))
     fk_order = _ordered_union(*(c.fks.keys() for c in chunks))
 
-    field_data = [_stack_column(n, chunks, "fields") for n in field_order]
-    fk_data = [_stack_column(n, chunks, "fks") for n in fk_order]
+    field_data = [_stack_column(n, chunks, get_fields) for n in field_order]
+    fk_data = [_stack_column(n, chunks, get_fks) for n in fk_order]
     source_xmls = np.array(
         [c.xml_stem for c in chunks for _ in range(c.n_rows)], dtype=object
     )
@@ -369,7 +389,7 @@ def _merge_and_write_layer(
     dst: Path,
     sources: list[tuple[Path, str]],
     target_layer: str,
-    fk_per_xml: dict[Path, dict[tuple[str, str], dict[str, str]]],
+    fk_per_xml: PerXmlFkLookup,
 ) -> tuple[int, bool]:
     """Orchestrator: read all sources, merge them, write once. Returns
     (row_count, has_geometry)."""
@@ -412,9 +432,7 @@ def _build_gml_to_uuid_map(root: ET.Element) -> dict[str, str]:
     return out
 
 
-def _resolve_xlinks(
-    root: ET.Element, gml_to_uuid: dict[str, str]
-) -> dict[tuple[str, str], dict[str, str]]:
+def _resolve_xlinks(root: ET.Element, gml_to_uuid: dict[str, str]) -> FkLookup:
     """Walk `root` and return resolved XLink relationships.
 
     For each xlink:href encountered, the result records
@@ -422,7 +440,7 @@ def _resolve_xlinks(
     where `parent_element_tag` is the local tag of the element carrying the
     xlink (e.g. `serviceProvider` in `<serviceProvider xlink:href="#Unit1"/>`).
     """
-    fk_map: dict[tuple[str, str], dict[str, str]] = {}
+    fk_map: FkLookup = {}
 
     def walk(elem: ET.Element, top: tuple[str, str] | None) -> None:
         local = _local_name(elem)
@@ -440,7 +458,7 @@ def _resolve_xlinks(
     return fk_map
 
 
-def _extract_xlinks(xml_path: Path) -> dict[tuple[str, str], dict[str, str]]:
+def _extract_xlinks(xml_path: Path) -> FkLookup:
     """Walk an AIXM XML once and resolve XLink references to UUIDs.
 
     Thin orchestrator: parses the file, then defers to the pure-on-Element

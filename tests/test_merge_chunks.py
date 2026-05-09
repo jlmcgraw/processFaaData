@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from operator import attrgetter
+
 import numpy as np
 import pytest
 
@@ -12,6 +14,9 @@ from faa_nasr.airspace import (
     _ordered_union,
     _stack_column,
 )
+
+_GET_FIELDS = attrgetter("fields")
+_GET_FKS = attrgetter("fks")
 
 
 def _chunk(
@@ -72,7 +77,7 @@ def test_stack_column_concatenates_present_data():
         _chunk(n_rows=2, fields={"name": ["A", "B"]}),
         _chunk(n_rows=3, fields={"name": ["C", "D", "E"]}),
     ]
-    result = _stack_column("name", chunks, "fields")
+    result = _stack_column("name", chunks, _GET_FIELDS)
     assert list(result) == ["A", "B", "C", "D", "E"]
 
 
@@ -82,7 +87,7 @@ def test_stack_column_pads_missing_chunks_with_none():
         _chunk(n_rows=2, fields={"name": ["A", "B"]}),
         _chunk(n_rows=3, fields={"other": [1, 2, 3]}),
     ]
-    result = _stack_column("name", chunks, "fields")
+    result = _stack_column("name", chunks, _GET_FIELDS)
     assert list(result) == ["A", "B", None, None, None]
 
 
@@ -91,7 +96,7 @@ def test_stack_column_works_for_fks_too():
         _chunk(n_rows=1, fks={"clientAirspace": ["uuid-1"]}),
         _chunk(n_rows=2, fks={"clientAirspace": ["uuid-2", "uuid-3"]}),
     ]
-    result = _stack_column("clientAirspace", chunks, "fks")
+    result = _stack_column("clientAirspace", chunks, _GET_FKS)
     assert list(result) == ["uuid-1", "uuid-2", "uuid-3"]
 
 

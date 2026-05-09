@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import sqlite3
+from collections.abc import Iterator
 from pathlib import Path
 
 from tqdm import tqdm
@@ -62,7 +63,7 @@ def _load_csv(conn: sqlite3.Connection, csv_path: Path, table_name: str) -> int:
 
         count = 0
 
-        def _rows():
+        def _rows() -> Iterator[list[str]]:
             nonlocal count
             for row in reader:
                 # Defensive: FAA CSVs are usually clean, but pad/truncate just in case.
