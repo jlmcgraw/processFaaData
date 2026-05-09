@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET
 import pytest
 
 from faa_nasr.airspace import (
+    FeatureRef,
     _build_gml_to_uuid_map,
     _local_name,
     _resolve_xlinks,
@@ -118,7 +119,7 @@ def test_resolve_xlinks_resolves_simple_reference():
     """)
     gml_to_uuid = _build_gml_to_uuid_map(root)
     fks = _resolve_xlinks(root, gml_to_uuid)
-    assert fks[("AirspaceUsage", "AirspaceUsage1")] == {
+    assert fks[FeatureRef("AirspaceUsage", "AirspaceUsage1")] == {
         "restrictedAirspace": "uuid-airspace-1",
     }
 
@@ -138,7 +139,7 @@ def test_resolve_xlinks_records_multiple_relationships_per_feature():
     """)
     gml_to_uuid = _build_gml_to_uuid_map(root)
     fks = _resolve_xlinks(root, gml_to_uuid)
-    assert fks[("AirTrafficControlService", "ATC1")] == {
+    assert fks[FeatureRef("AirTrafficControlService", "ATC1")] == {
         "clientAirspace": "uuid-airspace",
         "serviceProvider": "uuid-unit",
     }
@@ -165,7 +166,7 @@ def test_resolve_xlinks_attributes_to_topmost_feature_ancestor():
     gml_to_uuid = _build_gml_to_uuid_map(root)
     fks = _resolve_xlinks(root, gml_to_uuid)
     assert fks == {
-        ("Unit", "Unit1"): {"ownerOrganisation": "uuid-org"},
+        FeatureRef("Unit", "Unit1"): {"ownerOrganisation": "uuid-org"},
     }
 
 
@@ -216,6 +217,6 @@ def test_resolve_xlinks_strips_optional_leading_hash(href):
     """)
     gml_to_uuid = _build_gml_to_uuid_map(root)
     fks = _resolve_xlinks(root, gml_to_uuid)
-    assert fks[("AirspaceUsage", "AirspaceUsage1")] == {
+    assert fks[FeatureRef("AirspaceUsage", "AirspaceUsage1")] == {
         "restrictedAirspace": "uuid-airspace",
     }

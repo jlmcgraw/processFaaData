@@ -16,6 +16,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from operator import attrgetter
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 import pyogrio
@@ -25,10 +26,30 @@ from tqdm import tqdm
 
 from faa_nasr import _log
 
-# {(feature_type, gml_id): {relationship_name: target_uuid}} -- the resolved
+
+class FeatureRef(NamedTuple):
+    """Identifies one AIXM feature within a single XML.
+
+    Used as the key in `FkLookup`: a (feature_type, gml_id) pair like
+    ("AirTrafficControlService", "ATC1") locates exactly one entity in
+    one XML. Tuple semantics so it remains hashable / dict-key-friendly.
+    """
+
+    feature_type: str
+    gml_id: str
+
+
+class LayerSource(NamedTuple):
+    """One (xml-file, source-layer-name) pair to read with pyogrio."""
+
+    xml: Path
+    source_layer: str
+
+
+# {FeatureRef: {relationship_name: target_uuid}} -- the resolved
 # XLink graph for a single AIXM XML. e.g.
-# ("AirTrafficControlService", "ATC1") -> {"clientAirspace": "uuid-..."}.
-type FkLookup = dict[tuple[str, str], dict[str, str]]
+# FeatureRef("AirTrafficControlService", "ATC1") -> {"clientAirspace": "uuid-..."}.
+type FkLookup = dict[FeatureRef, dict[str, str]]
 
 # Mapping from XML path to that XML's resolved FK lookup.
 type PerXmlFkLookup = dict[Path, FkLookup]
@@ -130,14 +151,15 @@ def _build_sua(nasr_dir: Path, dst: Path) -> None:
     _init_spatialite_db(dst)
 
     # Pass 1: discover layers AND extract XLink relationships per XML in one walk.
-    layer_buckets: dict[str, list[tuple[Path, str]]] = defaultdict(list)
+    layer_buckets: dict[str, list[LayerSource]] = defaultdict(list)
     fk_per_xml: PerXmlFkLookup = {}
     for xml in tqdm(
         xml_files, desc="  scanning XMLs", unit="file", disable=_log.is_quiet(), leave=False
     ):
         try:
             for source_layer, _ in pyogrio.list_layers(xml):
-                layer_buckets[str(source_layer)].append((xml, str(source_layer)))
+                name = str(source_layer)
+                layer_buckets[name].append(LayerSource(xml=xml, source_layer=name))
         except Exception:
             continue
         try:
@@ -276,7 +298,8 @@ def _read_layer_source(
     gml_ids = fields.get("gml_id")
     for i in range(n_rows):
         gml = str(gml_ids[i]) if gml_ids is not None else ""
-        for rel_name, target_uuid in fk_lookup.get((source_layer, gml), {}).items():
+        ref = FeatureRef(feature_type=source_layer, gml_id=gml)
+        for rel_name, target_uuid in fk_lookup.get(ref, {}).items():
             fks.setdefault(rel_name, [None] * n_rows)[i] = target_uuid
     fk_arrays = {name: np.array(values, dtype=object) for name, values in fks.items()}
 
@@ -381,7 +404,7 @@ def _write_merged_layer(dst: Path, merged: _MergedLayer, target_layer: str) -> N
 
 def _merge_and_write_layer(
     dst: Path,
-    sources: list[tuple[Path, str]],
+    sources: list[LayerSource],
     target_layer: str,
     fk_per_xml: PerXmlFkLookup,
 ) -> tuple[int, bool]:
@@ -389,8 +412,9 @@ def _merge_and_write_layer(
     (row_count, has_geometry)."""
     chunks = [
         chunk
-        for xml, source_layer in sources
-        if (chunk := _read_layer_source(xml, source_layer, fk_per_xml.get(xml, {}))) is not None
+        for src in sources
+        if (chunk := _read_layer_source(src.xml, src.source_layer, fk_per_xml.get(src.xml, {})))
+        is not None
     ]
     merged = _merge_chunks(chunks)
     if merged is None:
@@ -429,16 +453,16 @@ def _resolve_xlinks(root: ET.Element, gml_to_uuid: dict[str, str]) -> FkLookup:
     """Walk `root` and return resolved XLink relationships.
 
     For each xlink:href encountered, the result records
-    (feature_type, feature_gml_id) -> {parent_element_tag: target_uuid},
+    FeatureRef(feature_type, feature_gml_id) -> {parent_element_tag: target_uuid},
     where `parent_element_tag` is the local tag of the element carrying the
     xlink (e.g. `serviceProvider` in `<serviceProvider xlink:href="#Unit1"/>`).
     """
     fk_map: FkLookup = {}
 
-    def walk(elem: ET.Element, top: tuple[str, str] | None) -> None:
+    def walk(elem: ET.Element, top: FeatureRef | None) -> None:
         local = _local_name(elem)
         if local in _AIXM_FEATURES:
-            top = (local, elem.get(f"{_GML_NS}id") or "")
+            top = FeatureRef(feature_type=local, gml_id=elem.get(f"{_GML_NS}id") or "")
         href = elem.get(f"{_XLINK_NS}href")
         if href and top is not None:
             target_uuid = gml_to_uuid.get(href.lstrip("#"))
@@ -456,7 +480,7 @@ def _extract_xlinks(xml_path: Path) -> FkLookup:
 
     Thin orchestrator: parses the file, then defers to the pure-on-Element
     helpers `_build_gml_to_uuid_map` and `_resolve_xlinks`. Returns
-    {(feature_type, gml_id): {relationship_name: target_uuid}}.
+    {FeatureRef(feature_type, gml_id): {relationship_name: target_uuid}}.
     """
     root = ET.parse(xml_path).getroot()
     gml_to_uuid = _build_gml_to_uuid_map(root)
