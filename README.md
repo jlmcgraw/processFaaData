@@ -4,12 +4,11 @@ Build SQLite and SpatiaLite databases from the FAA's 28-day NASR CSV
 subscription. The output databases can be queried directly or used as a data
 source by Electronic Flight Bag (EFB) software, mapping projects, etc.
 
-The pipeline produces four files:
+The pipeline produces three files:
 
 | File | Contents |
 |---|---|
-| `nasr.sqlite` | One SQLite table per NASR CSV (e.g. `APT_BASE`, `APT_RWY`, `NAV_BASE`, `FIX_BASE`, `OBSTACLE`). |
-| `spatialite_nasr.sqlite` | Same as above plus SpatiaLite POINT geometry columns and spatial indexes for the airport, navaid, fix, AWOS, ILS, FSS, ATC, holding-pattern, and obstacle tables. |
+| `nasr.sqlite` | One SQLite table per NASR CSV (e.g. `APT_BASE`, `APT_RWY`, `NAV_BASE`, `FIX_BASE`, `OBSTACLE`), plus SpatiaLite POINT geometry columns and spatial indexes for the airport, navaid, fix, AWOS, ILS, FSS, ATC, holding-pattern, and obstacle tables. |
 | `class_airspace_spatialite.sqlite` | Class B/C/D/E airspace polygons, from `Class_Airspace.shp`. |
 | `special_use_airspace_spatialite.sqlite` | Special use airspace (MOAs, restricted/prohibited areas, etc.) from the SAA AIXM XML. |
 
@@ -30,16 +29,16 @@ mkdir -p out
 container run --rm -v "$PWD/out":/data faa-nasr build --out /data --work-dir /data/work
 ```
 
-After it finishes, `out/` contains the four `.sqlite` files.
+After it finishes, `out/` contains the three `.sqlite` files.
 
 ## CLI
 
 ```sh
 nasr fetch          [--out DIR] [--edition current|next] [--obstacles/--no-obstacles]
-nasr build-tables   <csv-dir>     [--db nasr.sqlite] [--obstacle-csv DOF.CSV]
-nasr build-spatial  <src.sqlite>  [--db spatialite_nasr.sqlite]
-nasr build-airspace <nasr-dir>    [--out DIR]
-nasr build                        [--out DIR] [--work-dir DIR] [--edition current|next]
+nasr build-tables   <csv-dir>  [--db nasr.sqlite] [--obstacle-csv DOF.CSV]
+nasr build-spatial  <db>                                  # adds geometry in place
+nasr build-airspace <nasr-dir> [--out DIR]
+nasr build                     [--out DIR] [--work-dir DIR] [--edition current|next]
 ```
 
 `build` is the end-to-end pipeline (fetch → build-tables → build-spatial →

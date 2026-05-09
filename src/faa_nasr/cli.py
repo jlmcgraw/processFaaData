@@ -48,13 +48,16 @@ def build_tables_cmd(
 
 @app.command("build-spatial")
 def build_spatial_cmd(
-    src: Path = typer.Argument(..., help="Source SQLite from build-tables."),
-    dst: Path = typer.Option(Path("spatialite_nasr.sqlite"), "--db"),
+    db: Path = typer.Argument(..., help="SQLite DB to add geometry to (modified in-place)."),
 ) -> None:
-    """Copy the SQLite database and add SpatiaLite geometry columns + spatial indexes."""
+    """Add SpatiaLite geometry columns and spatial indexes to an existing NASR DB.
+
+    Operates in place on the SQLite file produced by `build-tables`. Idempotent:
+    tables that already have geometry are skipped.
+    """
     from faa_nasr import geometry
 
-    geometry.build(src=src, dst=dst)
+    geometry.build(db_path=db)
 
 
 @app.command("build-airspace")
@@ -78,12 +81,13 @@ def build(
     from faa_nasr import airspace, fetch as _fetch, geometry, tables
 
     fetched = _fetch.fetch(out_dir=work_dir, edition=edition, include_obstacles=True)
+    nasr_db = out_dir / "nasr.sqlite"
     tables.build(
         csv_dir=fetched.csv_dir,
-        db_path=out_dir / "nasr.sqlite",
+        db_path=nasr_db,
         obstacle_csv=fetched.obstacle_csv,
     )
-    geometry.build(src=out_dir / "nasr.sqlite", dst=out_dir / "spatialite_nasr.sqlite")
+    geometry.build(db_path=nasr_db)
     airspace.build(nasr_dir=fetched.nasr_dir, out_dir=out_dir)
 
 

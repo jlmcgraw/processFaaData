@@ -68,7 +68,7 @@ ORDER BY
 --------------------------------------------------------------------------------
 -- All obstacles within 5 NM of a point, tallest first.
 -- Note: for SRID 4326, PtDistWithin / Distance return meters (not degrees).
--- $ spatialite spatialite_nasr.sqlite
+-- $ spatialite nasr.sqlite
 --------------------------------------------------------------------------------
 SELECT
     OAS, CITY, STATE, TYPE, AGL, AMSL,
@@ -82,7 +82,7 @@ ORDER BY
 
 --------------------------------------------------------------------------------
 -- All AWOS / ASOS stations within 5 NM of a point, sorted by distance.
--- $ spatialite spatialite_nasr.sqlite
+-- $ spatialite nasr.sqlite
 --------------------------------------------------------------------------------
 SELECT
     ASOS_AWOS_ID, ASOS_AWOS_TYPE, CITY, STATE_CODE, PHONE_NO,

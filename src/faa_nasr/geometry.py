@@ -1,8 +1,7 @@
-"""Add SpatiaLite geometry columns and spatial indexes to a NASR SQLite database."""
+"""Add SpatiaLite geometry columns and spatial indexes to a NASR SQLite database in-place."""
 
 from __future__ import annotations
 
-import shutil
 import sqlite3
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -49,17 +48,19 @@ _POINT_GEOMS: tuple[PointGeom, ...] = (
 )
 
 
-def build(src: Path, dst: Path) -> None:
-    """Copy the SQLite DB, load mod_spatialite, and add geometry + indexes."""
-    src = src.resolve()
-    dst = dst.resolve()
-    _log.step(f"build-spatial -> {dst}")
-    if dst.exists():
-        dst.unlink()
-    _log.info(f"  copying {src.name} ({src.stat().st_size / 1e6:.0f} MB)")
-    shutil.copy(src, dst)
+def build(db_path: Path) -> None:
+    """Open the NASR SQLite DB in-place, load mod_spatialite, add geometry + indexes.
 
-    conn = sqlite3.connect(dst)
+    Idempotent: if geometry has already been added for a table, that table is
+    skipped. Re-running is safe (and cheap, since `_already_geometric` short-
+    circuits before any UPDATE runs).
+    """
+    db_path = db_path.resolve()
+    _log.step(f"build-spatial -> {db_path}")
+    if not db_path.exists():
+        raise FileNotFoundError(f"database not found: {db_path}")
+
+    conn = sqlite3.connect(db_path)
     try:
         conn.enable_load_extension(True)
         _load_mod_spatialite(conn)
@@ -67,28 +68,43 @@ def build(src: Path, dst: Path) -> None:
         # untrusted-schema guard otherwise rejects it, leaving spatial indexes
         # structurally present but with NULL data.
         conn.execute("PRAGMA trusted_schema = ON")
-        # Write-perf PRAGMAs: these don't carry over from the source DB because
-        # they're per-connection.
+        # Write-perf PRAGMAs (per-connection).
         conn.execute("PRAGMA synchronous = OFF")
         conn.execute("PRAGMA journal_mode = MEMORY")
-        conn.execute("SELECT InitSpatialMetadata(1)")
+        if not _spatialite_initialized(conn):
+            conn.execute("SELECT InitSpatialMetadata(1)")
 
-        existing = _existing(_POINT_GEOMS, conn)
+        existing = _existing_tables(_POINT_GEOMS, conn)
+        to_populate = [g for g in existing if not _already_geometric(conn, g)]
+        skipped = len(existing) - len(to_populate)
+        if skipped:
+            _log.info(f"  {skipped} table(s) already have geometry -- skipping")
 
         # Pass 1: add column + populate geometries (no spatial index yet, so the
         # bulk UPDATE doesn't pay per-row R-tree trigger cost).
         total_geoms = 0
-        bar = tqdm(existing, desc="  geometries", unit="table", disable=_log.is_quiet(), leave=True)
+        bar = tqdm(
+            to_populate,
+            desc="  geometries",
+            unit="table",
+            disable=_log.is_quiet(),
+            leave=True,
+        )
         for geom in bar:
             bar.set_postfix_str(geom.table, refresh=False)
             total_geoms += _populate_point_geometry(conn, geom)
-        _log.info(f"  added {total_geoms:,} geometries across {len(existing)} tables")
+        if to_populate:
+            _log.info(f"  added {total_geoms:,} geometries across {len(to_populate)} tables")
 
-        # Pass 2: build spatial indexes against the populated columns. This is a
-        # single bulk R-tree load per table -- much faster than maintaining the
-        # index incrementally during the UPDATE above (where per-row trigger
-        # overhead would dominate, especially for OBSTACLE's 635k rows).
-        bar = tqdm(existing, desc="  spatial indexes", unit="table", disable=_log.is_quiet(), leave=True)
+        # Pass 2: build spatial indexes against the populated columns.
+        needs_index = [g for g in existing if not _has_spatial_index(conn, g)]
+        bar = tqdm(
+            needs_index,
+            desc="  spatial indexes",
+            unit="table",
+            disable=_log.is_quiet(),
+            leave=True,
+        )
         for geom in bar:
             bar.set_postfix_str(geom.table, refresh=False)
             conn.execute("SELECT CreateSpatialIndex(?, ?)", (geom.table, geom.geom_column))
@@ -112,7 +128,14 @@ def _load_mod_spatialite(conn: sqlite3.Connection) -> None:
     ) from last_err
 
 
-def _existing(geoms: Iterable[PointGeom], conn: sqlite3.Connection) -> list[PointGeom]:
+def _spatialite_initialized(conn: sqlite3.Connection) -> bool:
+    row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='geometry_columns'"
+    ).fetchone()
+    return row is not None
+
+
+def _existing_tables(geoms: Iterable[PointGeom], conn: sqlite3.Connection) -> list[PointGeom]:
     out: list[PointGeom] = []
     for g in geoms:
         row = conn.execute(
@@ -122,6 +145,31 @@ def _existing(geoms: Iterable[PointGeom], conn: sqlite3.Connection) -> list[Poin
         if row is not None:
             out.append(g)
     return out
+
+
+def _already_geometric(conn: sqlite3.Connection, g: PointGeom) -> bool:
+    """True if g.geom_column is already registered in geometry_columns for g.table.
+
+    SpatiaLite stores f_table_name / f_geometry_column case-insensitively in
+    its metadata, so compare via LOWER() rather than literal equality.
+    """
+    row = conn.execute(
+        "SELECT 1 FROM geometry_columns "
+        "WHERE LOWER(f_table_name) = LOWER(?) AND LOWER(f_geometry_column) = LOWER(?)",
+        (g.table, g.geom_column),
+    ).fetchone()
+    return row is not None
+
+
+def _has_spatial_index(conn: sqlite3.Connection, g: PointGeom) -> bool:
+    """True if a SpatialIndex (R-tree) virtual table exists for g.table.g.geom_column."""
+    # SpatiaLite names the R-tree backing table after the (lowercased) table+column.
+    row = conn.execute(
+        "SELECT name FROM sqlite_master "
+        "WHERE type='table' AND LOWER(name) = LOWER(?)",
+        (f"idx_{g.table}_{g.geom_column}",),
+    ).fetchone()
+    return row is not None
 
 
 def _populate_point_geometry(conn: sqlite3.Connection, g: PointGeom) -> int:
