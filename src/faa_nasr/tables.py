@@ -6,6 +6,8 @@ import csv
 import sqlite3
 from pathlib import Path
 
+from faa_nasr import _log
+
 # CSVs whose presence describes schema, not data.
 _STRUCTURE_SUFFIX = "_CSV_DATA_STRUCTURE.csv"
 
@@ -13,6 +15,7 @@ _STRUCTURE_SUFFIX = "_CSV_DATA_STRUCTURE.csv"
 def build(csv_dir: Path, db_path: Path, obstacle_csv: Path | None = None) -> None:
     """Create a SQLite database, one table per NASR CSV (plus DOF if provided)."""
     db_path = db_path.resolve()
+    _log.step(f"build-tables -> {db_path}")
     if db_path.exists():
         db_path.unlink()
     conn = sqlite3.connect(db_path)
@@ -21,27 +24,31 @@ def build(csv_dir: Path, db_path: Path, obstacle_csv: Path | None = None) -> Non
         conn.execute("PRAGMA synchronous = OFF")
         conn.execute("PRAGMA journal_mode = MEMORY")
 
-        for csv_path in sorted(csv_dir.glob("*.csv")):
-            name = csv_path.name
-            if name.endswith(_STRUCTURE_SUFFIX):
-                continue
-            _load_csv(conn, csv_path, table_name=csv_path.stem)
+        csv_files = [
+            p for p in sorted(csv_dir.glob("*.csv")) if not p.name.endswith(_STRUCTURE_SUFFIX)
+        ]
+        total = len(csv_files) + (1 if obstacle_csv is not None else 0)
+        for i, csv_path in enumerate(csv_files, start=1):
+            n = _load_csv(conn, csv_path, table_name=csv_path.stem)
+            _log.info(f"  [{i:>3}/{total}] {csv_path.stem:<24} {n:>9,} rows")
 
         if obstacle_csv is not None:
-            _load_csv(conn, obstacle_csv, table_name="OBSTACLE")
+            n = _load_csv(conn, obstacle_csv, table_name="OBSTACLE")
+            _log.info(f"  [{total:>3}/{total}] {'OBSTACLE':<24} {n:>9,} rows")
+
         conn.commit()
     finally:
         conn.close()
 
 
-def _load_csv(conn: sqlite3.Connection, csv_path: Path, table_name: str) -> None:
-    """Discover columns from the CSV header and bulk-insert all rows in one transaction."""
+def _load_csv(conn: sqlite3.Connection, csv_path: Path, table_name: str) -> int:
+    """Discover columns from the CSV header, bulk-insert, return row count."""
     with csv_path.open("r", newline="", encoding="utf-8-sig", errors="replace") as f:
         reader = csv.reader(f)
         try:
             header = next(reader)
         except StopIteration:
-            return
+            return 0
         columns = [_safe_col(c) for c in header]
         ddl_cols = ", ".join(f'"{c}" TEXT' for c in columns)
         conn.execute(f'DROP TABLE IF EXISTS "{table_name}"')
@@ -49,17 +56,21 @@ def _load_csv(conn: sqlite3.Connection, csv_path: Path, table_name: str) -> None
         placeholders = ",".join("?" * len(columns))
         insert = f'INSERT INTO "{table_name}" VALUES ({placeholders})'
 
-        # Skip rows that don't match the column count (defensive; FAA CSVs are usually clean).
+        count = 0
+
         def _rows():
+            nonlocal count
             for row in reader:
-                if len(row) == len(columns):
-                    yield row
-                elif len(row) < len(columns):
-                    yield row + [""] * (len(columns) - len(row))
-                else:
-                    yield row[: len(columns)]
+                # Defensive: FAA CSVs are usually clean, but pad/truncate just in case.
+                if len(row) < len(columns):
+                    row = row + [""] * (len(columns) - len(row))
+                elif len(row) > len(columns):
+                    row = row[: len(columns)]
+                count += 1
+                yield row
 
         conn.executemany(insert, _rows())
+        return count
 
 
 def _safe_col(name: str) -> str:

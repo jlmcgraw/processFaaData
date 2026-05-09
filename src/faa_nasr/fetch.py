@@ -9,6 +9,8 @@ from pathlib import Path
 
 import httpx
 
+from faa_nasr import _log
+
 NASR_API_URL = "https://external-api.faa.gov/apra/nfdc/nasr/chart"
 DOF_CSV_URL = "https://aeronav.faa.gov/Obst_Data/DAILY_DOF_CSV.ZIP"
 
@@ -22,16 +24,20 @@ class FetchResult:
 
 def fetch(out_dir: Path, edition: str = "current", include_obstacles: bool = True) -> FetchResult:
     """Download the requested NASR edition and (optionally) the DOF, return paths."""
+    _log.step(f"fetch ({edition} edition) -> {out_dir}")
     out_dir = out_dir.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
     nasr_zip = _download_nasr(out_dir=out_dir, edition=edition)
+    _log.info(f"  extracting {nasr_zip.name}")
     nasr_dir = _extract_zip(nasr_zip, out_dir / nasr_zip.stem)
     csv_dir = _extract_inner_csv_bundle(nasr_dir)
+    _log.info(f"  CSV bundle ready: {csv_dir}")
 
     obstacle_csv: Path | None = None
     if include_obstacles:
         obstacle_csv = _download_obstacles(out_dir=out_dir)
+        _log.info(f"  obstacle file ready: {obstacle_csv.name}")
 
     return FetchResult(nasr_dir=nasr_dir, csv_dir=csv_dir, obstacle_csv=obstacle_csv)
 
@@ -49,13 +55,17 @@ def _download_nasr(out_dir: Path, edition: str) -> Path:
         url = payload["edition"][0]["product"]["url"]
         dest = out_dir / Path(url).name
         if dest.exists():
+            _log.info(f"  cached: {dest.name} ({dest.stat().st_size / 1e6:.0f} MB)")
             return dest
+        _log.info(f"  downloading {url}")
         _stream_to_file(client, url, dest)
+        _log.info(f"  downloaded {dest.name} ({dest.stat().st_size / 1e6:.0f} MB)")
     return dest
 
 
 def _download_obstacles(out_dir: Path) -> Path:
     """Download DAILY_DOF_CSV.ZIP and extract DOF.CSV; return the CSV path."""
+    _log.info(f"  downloading {DOF_CSV_URL}")
     with httpx.Client(timeout=60.0, follow_redirects=True) as client:
         zip_path = out_dir / "DAILY_DOF_CSV.ZIP"
         _stream_to_file(client, DOF_CSV_URL, zip_path)

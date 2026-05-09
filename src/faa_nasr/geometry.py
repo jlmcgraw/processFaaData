@@ -8,6 +8,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from faa_nasr import _log
+
 # Candidate paths to try for mod_spatialite. Order matters only for noise:
 # the loader picks the first one that resolves.
 _MOD_SPATIALITE_CANDIDATES = (
@@ -49,8 +51,10 @@ def build(src: Path, dst: Path) -> None:
     """Copy the SQLite DB, load mod_spatialite, and add geometry + indexes."""
     src = src.resolve()
     dst = dst.resolve()
+    _log.step(f"build-spatial -> {dst}")
     if dst.exists():
         dst.unlink()
+    _log.info(f"  copying {src.name} ({src.stat().st_size / 1e6:.0f} MB)")
     shutil.copy(src, dst)
 
     conn = sqlite3.connect(dst)
@@ -62,8 +66,10 @@ def build(src: Path, dst: Path) -> None:
         # structurally present but with NULL data.
         conn.execute("PRAGMA trusted_schema = ON")
         conn.execute("SELECT InitSpatialMetadata(1)")
-        for geom in _existing(_POINT_GEOMS, conn):
-            _add_point_geometry(conn, geom)
+        existing = _existing(_POINT_GEOMS, conn)
+        for i, geom in enumerate(existing, start=1):
+            n = _add_point_geometry(conn, geom)
+            _log.info(f"  [{i}/{len(existing)}] {geom.table:<10} {n:>9,} geometries")
         conn.commit()
     finally:
         conn.close()
@@ -74,6 +80,7 @@ def _load_mod_spatialite(conn: sqlite3.Connection) -> None:
     for path in _MOD_SPATIALITE_CANDIDATES:
         try:
             conn.load_extension(path)
+            _log.info(f"  loaded mod_spatialite from {path}")
             return
         except sqlite3.OperationalError as exc:
             last_err = exc
@@ -94,13 +101,13 @@ def _existing(geoms: Iterable[PointGeom], conn: sqlite3.Connection) -> list[Poin
     return out
 
 
-def _add_point_geometry(conn: sqlite3.Connection, g: PointGeom) -> None:
+def _add_point_geometry(conn: sqlite3.Connection, g: PointGeom) -> int:
     conn.execute(
         "SELECT AddGeometryColumn(?, ?, 4326, 'POINT', 'XY')",
         (g.table, g.geom_column),
     )
     conn.execute("SELECT CreateSpatialIndex(?, ?)", (g.table, g.geom_column))
-    conn.execute(
+    cur = conn.execute(
         f'UPDATE "{g.table}" '
         f'SET "{g.geom_column}" = MakePoint('
         f'CAST("{g.lon_column}" AS DOUBLE), '
@@ -108,3 +115,4 @@ def _add_point_geometry(conn: sqlite3.Connection, g: PointGeom) -> None:
         f'WHERE "{g.lon_column}" IS NOT NULL AND "{g.lon_column}" <> "" '
         f'AND "{g.lat_column}" IS NOT NULL AND "{g.lat_column}" <> ""'
     )
+    return cur.rowcount

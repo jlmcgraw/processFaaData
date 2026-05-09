@@ -11,6 +11,17 @@ app = typer.Typer(
 )
 
 
+@app.callback()
+def _root(
+    quiet: bool = typer.Option(
+        False, "--quiet", "-q", help="Suppress progress output on stderr."
+    ),
+) -> None:
+    from faa_nasr import _log
+
+    _log.set_quiet(quiet)
+
+
 @app.command()
 def fetch(
     out_dir: Path = typer.Option(Path("./local_data"), "--out", "-o"),
