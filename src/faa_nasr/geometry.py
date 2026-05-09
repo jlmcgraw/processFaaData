@@ -67,14 +67,32 @@ def build(src: Path, dst: Path) -> None:
         # untrusted-schema guard otherwise rejects it, leaving spatial indexes
         # structurally present but with NULL data.
         conn.execute("PRAGMA trusted_schema = ON")
+        # Write-perf PRAGMAs: these don't carry over from the source DB because
+        # they're per-connection.
+        conn.execute("PRAGMA synchronous = OFF")
+        conn.execute("PRAGMA journal_mode = MEMORY")
         conn.execute("SELECT InitSpatialMetadata(1)")
+
         existing = _existing(_POINT_GEOMS, conn)
+
+        # Pass 1: add column + populate geometries (no spatial index yet, so the
+        # bulk UPDATE doesn't pay per-row R-tree trigger cost).
         total_geoms = 0
         bar = tqdm(existing, desc="  geometries", unit="table", disable=_log.is_quiet(), leave=True)
         for geom in bar:
             bar.set_postfix_str(geom.table, refresh=False)
-            total_geoms += _add_point_geometry(conn, geom)
+            total_geoms += _populate_point_geometry(conn, geom)
         _log.info(f"  added {total_geoms:,} geometries across {len(existing)} tables")
+
+        # Pass 2: build spatial indexes against the populated columns. This is a
+        # single bulk R-tree load per table -- much faster than maintaining the
+        # index incrementally during the UPDATE above (where per-row trigger
+        # overhead would dominate, especially for OBSTACLE's 635k rows).
+        bar = tqdm(existing, desc="  spatial indexes", unit="table", disable=_log.is_quiet(), leave=True)
+        for geom in bar:
+            bar.set_postfix_str(geom.table, refresh=False)
+            conn.execute("SELECT CreateSpatialIndex(?, ?)", (geom.table, geom.geom_column))
+
         conn.commit()
     finally:
         conn.close()
@@ -106,12 +124,12 @@ def _existing(geoms: Iterable[PointGeom], conn: sqlite3.Connection) -> list[Poin
     return out
 
 
-def _add_point_geometry(conn: sqlite3.Connection, g: PointGeom) -> int:
+def _populate_point_geometry(conn: sqlite3.Connection, g: PointGeom) -> int:
+    """Add the geometry column and fill it from the table's lon/lat columns."""
     conn.execute(
         "SELECT AddGeometryColumn(?, ?, 4326, 'POINT', 'XY')",
         (g.table, g.geom_column),
     )
-    conn.execute("SELECT CreateSpatialIndex(?, ?)", (g.table, g.geom_column))
     cur = conn.execute(
         f'UPDATE "{g.table}" '
         f'SET "{g.geom_column}" = MakePoint('
