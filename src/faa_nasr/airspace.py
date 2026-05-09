@@ -12,6 +12,8 @@ import warnings
 import xml.etree.ElementTree as ET
 import zipfile
 from collections import defaultdict
+from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -205,134 +207,153 @@ def _copy_shapefile(src: Path, dst: Path, layer_name: str) -> int:
     return len(geometry)
 
 
-def _merge_and_write_layer(
-    dst: Path,
-    sources: list[tuple[Path, str]],
-    target_layer: str,
-    fk_per_xml: dict[Path, dict[tuple[str, str], dict[str, str]]],
-) -> tuple[int, bool]:
-    """Read every (xml, source_layer) source, concat in memory, write once.
+@dataclass(frozen=True)
+class _SourceChunk:
+    """One pyogrio read of one (xml, source_layer) pair, ready to be merged.
 
-    Returns (row_count, has_geometry). AIXM XMLs for the same source layer name
-    can differ in their field set (some sources include optional fields that
-    others omit), so we accumulate per-field-name and pad missing fields with
-    None for sources that don't supply them.
-
-    For layers with no geometry across all sources, we fall back to a plain
-    sqlite3 INSERT path since pyogrio.raw.write requires a valid geometry array.
-
-    `fk_per_xml` carries the resolved XLink targets per XML; we use it to add
-    a column per relationship name (e.g. `clientAirspace`, `serviceProvider`)
-    to the merged table, holding the target entity's `identifier` UUID.
+    `fields` and `fks` map column names to numpy arrays of length `n_rows`.
+    `geometry` is a numpy array of WKB bytes (or all-None for layers without
+    geometry). `xml_stem` is the airspace name we propagate as `_source_xml`.
     """
-    geom_chunks: list[np.ndarray] = []
-    field_chunks: dict[str, list[np.ndarray]] = defaultdict(list)
-    source_row_counts: list[int] = []  # rows per source, parallel to sources iter
-    source_xmls: list[str] = []
-    geom_type: str | None = None
-    crs = None
-    sources_seen: list[Path] = []
-    field_order: list[str] = []  # preserve first-seen field order for determinism
-    field_seen: set[str] = set()
-    # FK columns are added in the order their relationship names are first seen.
-    fk_order: list[str] = []
-    fk_seen: set[str] = set()
-    fk_chunks: dict[str, list[np.ndarray]] = defaultdict(list)
-    feature_type = sources[0][1] if sources else None
 
-    for xml, source_layer in sources:
-        try:
-            meta, _fids, geometry, field_data = pyogrio.raw.read(xml, layer=source_layer)
-        except (pyogrio.errors.DataSourceError, IndexError):
-            continue
-        names = list(meta["fields"])
-        n_rows = len(field_data[0]) if field_data else (len(geometry) if geometry is not None else 0)
-        if n_rows == 0:
-            continue
+    xml_stem: str
+    n_rows: int
+    geometry: np.ndarray
+    fields: dict[str, np.ndarray]
+    fks: dict[str, np.ndarray]
+    geom_type: str | None
+    crs: object | None
 
-        if geom_type is None:
-            geom_type = meta.get("geometry_type")
-            crs = meta.get("crs")
 
-        for name in names:
-            if name not in field_seen:
-                field_order.append(name)
-                field_seen.add(name)
+@dataclass(frozen=True)
+class _MergedLayer:
+    """Result of merging multiple `_SourceChunk`s into one layer-shaped payload."""
 
-        # Pad earlier sources for any newly-seen fields; the new source itself
-        # supplies all the names already in field_order it has, missing ones
-        # get filled below.
-        for new_name in field_order:
-            chunks = field_chunks[new_name]
-            if len(chunks) < len(sources_seen):
-                # Backfill: this field appeared after earlier sources were read.
-                for prior_n in source_row_counts[len(chunks) :]:
-                    chunks.append(np.array([None] * prior_n, dtype=object))
+    geometry: np.ndarray
+    fields: list[str]  # field columns + FK columns + ["_source_xml"]
+    field_data: list[np.ndarray]  # parallel to `fields`
+    geom_type: str | None
+    crs: object | None
+    has_geometry: bool
 
-        present = dict(zip(names, field_data, strict=True))
-        for name in field_order:
-            if name in present:
-                field_chunks[name].append(present[name])
-            else:
-                field_chunks[name].append(np.array([None] * n_rows, dtype=object))
 
-        # Resolve per-row XLink FKs for this source. pyogrio's gml_id field
-        # carries the AIXM feature's gml:id, which keys into fk_per_xml.
-        gml_ids = present.get("gml_id")
-        fk_lookup = fk_per_xml.get(xml, {})
-        per_row_fks: list[dict[str, str]] = []
-        for i in range(n_rows):
-            gml = str(gml_ids[i]) if gml_ids is not None else ""
-            per_row_fks.append(fk_lookup.get((feature_type, gml), {}))
+def _read_layer_source(
+    xml: Path,
+    source_layer: str,
+    fk_lookup: dict[tuple[str, str], dict[str, str]],
+) -> _SourceChunk | None:
+    """Read one source via pyogrio and resolve its per-row XLink FKs.
 
-        for fks in per_row_fks:
-            for name in fks:
-                if name not in fk_seen:
-                    fk_order.append(name)
-                    fk_seen.add(name)
+    Returns `None` if the source is unreadable or empty. `fk_lookup` is the
+    resolved-XLink map for the source XML (i.e. `fk_per_xml[xml]`).
+    """
+    try:
+        meta, _fids, geometry, field_data = pyogrio.raw.read(xml, layer=source_layer)
+    except (pyogrio.errors.DataSourceError, IndexError):
+        return None
+    n_rows = (
+        len(field_data[0]) if field_data else (len(geometry) if geometry is not None else 0)
+    )
+    if n_rows == 0:
+        return None
 
-        # Backfill any newly-seen FK columns for prior sources.
-        for fk_name in fk_order:
-            chunks = fk_chunks[fk_name]
-            if len(chunks) < len(sources_seen):
-                for prior_n in source_row_counts[len(chunks) :]:
-                    chunks.append(np.array([None] * prior_n, dtype=object))
+    fields = dict(zip(meta["fields"], field_data, strict=True))
 
-        for fk_name in fk_order:
-            col = np.array([fks.get(fk_name) for fks in per_row_fks], dtype=object)
-            fk_chunks[fk_name].append(col)
+    # Resolve per-row FKs by looking up each row's gml_id in fk_lookup.
+    fks: dict[str, list[object]] = {}
+    gml_ids = fields.get("gml_id")
+    for i in range(n_rows):
+        gml = str(gml_ids[i]) if gml_ids is not None else ""
+        for rel_name, target_uuid in fk_lookup.get((source_layer, gml), {}).items():
+            fks.setdefault(rel_name, [None] * n_rows)[i] = target_uuid
+    fk_arrays = {name: np.array(values, dtype=object) for name, values in fks.items()}
 
-        if geometry is not None and len(geometry) == n_rows:
-            geom_chunks.append(geometry)
-        else:
-            geom_chunks.append(np.array([None] * n_rows, dtype=object))
-        source_xmls.extend([xml.stem] * n_rows)
-        source_row_counts.append(n_rows)
-        sources_seen.append(xml)
+    geom = (
+        geometry
+        if geometry is not None and len(geometry) == n_rows
+        else np.array([None] * n_rows, dtype=object)
+    )
 
-    if not source_xmls:
-        return 0, False
+    return _SourceChunk(
+        xml_stem=xml.stem,
+        n_rows=n_rows,
+        geometry=geom,
+        fields=fields,
+        fks=fk_arrays,
+        geom_type=meta.get("geometry_type"),
+        crs=meta.get("crs"),
+    )
 
-    geom = np.concatenate(geom_chunks)
-    field_data = [np.concatenate(field_chunks[name]) for name in field_order]
-    has_geometry = bool(geom_type) and any(g is not None for g in geom)
 
-    # Append FK columns (each holds the target entity's identifier UUID), then
-    # the per-row source-XML stem so callers can look up which airspace each
-    # row came from. _source_xml is the human-readable label; the FK columns
-    # are the precise XLink-derived foreign keys.
-    fk_columns = [np.concatenate(fk_chunks[name]) for name in fk_order]
-    fields_with_src = field_order + fk_order + ["_source_xml"]
-    field_data_with_src = field_data + fk_columns + [np.array(source_xmls, dtype=object)]
+def _ordered_union(*key_iterables: Iterable[str]) -> list[str]:
+    """Union of keys preserving first-seen insertion order across all iterables."""
+    seen: dict[str, None] = {}
+    for keys in key_iterables:
+        for k in keys:
+            seen.setdefault(k, None)
+    return list(seen)
 
-    if has_geometry:
+
+def _stack_column(name: str, chunks: list[_SourceChunk], source: str) -> np.ndarray:
+    """Concatenate `name` across chunks, padding chunks that lack it with None.
+
+    `source` is "fields" or "fks" -- chosen to keep call sites readable.
+    """
+    parts: list[np.ndarray] = []
+    for c in chunks:
+        col = (c.fields if source == "fields" else c.fks).get(name)
+        if col is None:
+            col = np.array([None] * c.n_rows, dtype=object)
+        parts.append(col)
+    return np.concatenate(parts)
+
+
+def _merge_chunks(chunks: list[_SourceChunk]) -> _MergedLayer | None:
+    """Pure: combine chunks into one merged layer payload (None if empty).
+
+    AIXM XMLs for the same source layer can differ in field set, so we take
+    the union of field/FK names and pad missing columns with None per chunk.
+    `geom_type` and `crs` come from the first chunk that has them.
+    """
+    if not chunks:
+        return None
+
+    field_order = _ordered_union(*(c.fields.keys() for c in chunks))
+    fk_order = _ordered_union(*(c.fks.keys() for c in chunks))
+
+    field_data = [_stack_column(n, chunks, "fields") for n in field_order]
+    fk_data = [_stack_column(n, chunks, "fks") for n in fk_order]
+    source_xmls = np.array(
+        [c.xml_stem for c in chunks for _ in range(c.n_rows)], dtype=object
+    )
+    geometry = np.concatenate([c.geometry for c in chunks])
+
+    geom_type = next((c.geom_type for c in chunks if c.geom_type), None)
+    crs = next((c.crs for c in chunks if c.crs is not None), None)
+    has_geometry = bool(geom_type) and any(g is not None for g in geometry)
+
+    return _MergedLayer(
+        geometry=geometry,
+        fields=field_order + fk_order + ["_source_xml"],
+        field_data=field_data + fk_data + [source_xmls],
+        geom_type=geom_type,
+        crs=crs,
+        has_geometry=has_geometry,
+    )
+
+
+def _write_merged_layer(dst: Path, merged: _MergedLayer, target_layer: str) -> None:
+    """Write a merged layer to `dst`. Spatial layers go through pyogrio;
+    attribute-only layers go through raw sqlite3 (pyogrio requires a geometry).
+    """
+    if merged.has_geometry:
         pyogrio.raw.write(
             dst,
-            geometry=geom,
-            field_data=field_data_with_src,
-            fields=fields_with_src,
-            geometry_type=_promote_geom_type(geom_type),
-            crs=crs,
+            geometry=merged.geometry,
+            field_data=merged.field_data,
+            fields=merged.fields,
+            geometry_type=_promote_geom_type(merged.geom_type),
+            crs=merged.crs,
             layer=target_layer,
             driver="SQLite",
             dataset_options={"SPATIALITE": "YES"},
@@ -341,9 +362,28 @@ def _merge_and_write_layer(
             append=dst.exists(),
         )
     else:
-        _write_attribute_only_table(dst, target_layer, fields_with_src, field_data_with_src)
+        _write_attribute_only_table(dst, target_layer, merged.fields, merged.field_data)
 
-    return len(source_xmls), has_geometry
+
+def _merge_and_write_layer(
+    dst: Path,
+    sources: list[tuple[Path, str]],
+    target_layer: str,
+    fk_per_xml: dict[Path, dict[tuple[str, str], dict[str, str]]],
+) -> tuple[int, bool]:
+    """Orchestrator: read all sources, merge them, write once. Returns
+    (row_count, has_geometry)."""
+    chunks = [
+        chunk
+        for xml, source_layer in sources
+        if (chunk := _read_layer_source(xml, source_layer, fk_per_xml.get(xml, {})))
+        is not None
+    ]
+    merged = _merge_chunks(chunks)
+    if merged is None:
+        return 0, False
+    _write_merged_layer(dst=dst, merged=merged, target_layer=target_layer)
+    return sum(c.n_rows for c in chunks), merged.has_geometry
 
 
 def _local_name(elem: ET.Element) -> str:
