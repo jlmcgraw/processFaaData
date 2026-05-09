@@ -31,7 +31,7 @@ def _parse(xml: str) -> ET.Element:
 
 
 def test_local_name_strips_namespace():
-    elem = _parse(f'<Airspace {_NS}/>')
+    elem = _parse(f"<Airspace {_NS}/>")
     assert _local_name(elem) == "Airspace"
 
 
@@ -149,7 +149,9 @@ def test_resolve_xlinks_attributes_to_topmost_feature_ancestor():
     # enclosing top-level feature (Unit), not to TimeSlice.
     root = _parse(f"""
         <hasMember {_NS}>
-          <OrganisationAuthority gml:id="Org1"><identifier>uuid-org</identifier></OrganisationAuthority>
+          <OrganisationAuthority gml:id="Org1">
+            <identifier>uuid-org</identifier>
+          </OrganisationAuthority>
           <Unit gml:id="Unit1">
             <identifier>uuid-unit</identifier>
             <timeSlice>

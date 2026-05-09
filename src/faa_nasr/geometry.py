@@ -165,8 +165,7 @@ def _has_spatial_index(conn: sqlite3.Connection, g: PointGeom) -> bool:
     """True if a SpatialIndex (R-tree) virtual table exists for g.table.g.geom_column."""
     # SpatiaLite names the R-tree backing table after the (lowercased) table+column.
     row = conn.execute(
-        "SELECT name FROM sqlite_master "
-        "WHERE type='table' AND LOWER(name) = LOWER(?)",
+        "SELECT name FROM sqlite_master WHERE type='table' AND LOWER(name) = LOWER(?)",
         (f"idx_{g.table}_{g.geom_column}",),
     ).fetchone()
     return row is not None

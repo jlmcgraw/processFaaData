@@ -40,6 +40,4 @@ def parse_dms(coordinate: str) -> float:
     m = _DMS_RE.match(coordinate)
     if not m:
         raise ValueError(f"cannot parse coordinate {coordinate!r}")
-    return dms_to_decimal(
-        float(m["deg"]), float(m["min"]), float(m["sec"]), m["hemis"]
-    )
+    return dms_to_decimal(float(m["deg"]), float(m["min"]), float(m["sec"]), m["hemis"])

@@ -23,8 +23,15 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "basedpyright>=1.20",
+    "mkdocs>=1.6",
+    "mypy>=1.10",
+    "pyclean>=3.0",
     "pytest>=8",
     "ruff>=0.6",
+    "ty>=0.0.1a1",
+    "types-tqdm>=4.66",
+    "typos>=1.24",
 ]
 
 [tool.ruff]
@@ -34,5 +41,32 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
+[tool.ruff.lint.per-file-ignores]
+# typer's idiomatic API uses typer.Option(...) / typer.Argument(...) as
+# argument defaults; ruff's bugbear B008 rule flags this but it's correct.
+"src/faa_nasr/cli.py" = ["B008"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.12"
+
+[[tool.mypy.overrides]]
+# pyogrio doesn't ship a py.typed marker, so mypy can't see its types.
+module = ["pyogrio", "pyogrio.*"]
+ignore_missing_imports = true
+
+[tool.basedpyright]
+# basedpyright defaults to its own "all" mode -- much stricter than pyright's
+# strict and noisy for a project that uses untyped scientific libs (numpy
+# object-dtype arrays, pyogrio without py.typed). "standard" matches what
+# pyright defaults to, which is still rigorous but ergonomic.
+typeCheckingMode = "standard"
+reportMissingTypeStubs = false  # pyogrio doesn't ship a py.typed
+include = ["src", "tests"]
+
+[[tool.basedpyright.executionEnvironments]]
+# Tests legitimately access _underscore_prefixed helpers from the package.
+root = "tests"
+reportPrivateUsage = false

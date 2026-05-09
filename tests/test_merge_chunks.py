@@ -8,10 +8,10 @@ import numpy as np
 import pytest
 
 from faa_nasr.airspace import (
-    _MergedLayer,
-    _SourceChunk,
     _merge_chunks,
+    _MergedLayer,
     _ordered_union,
+    _SourceChunk,
     _stack_column,
 )
 
@@ -27,17 +27,13 @@ def _chunk(
     fields: dict[str, list[object]] | None = None,
     fks: dict[str, list[object]] | None = None,
     geom_type: str | None = "Polygon",
-    crs: object | None = None,
+    crs: str | None = None,
 ) -> _SourceChunk:
     """Concise factory for tests. Lists are converted to object-dtype arrays."""
     return _SourceChunk(
         xml_stem=xml_stem,
         n_rows=n_rows,
-        geometry=(
-            geometry
-            if geometry is not None
-            else np.array([b"GEOM"] * n_rows, dtype=object)
-        ),
+        geometry=(geometry if geometry is not None else np.array([b"GEOM"] * n_rows, dtype=object)),
         fields={k: np.array(v, dtype=object) for k, v in (fields or {}).items()},
         fks={k: np.array(v, dtype=object) for k, v in (fks or {}).items()},
         geom_type=geom_type,

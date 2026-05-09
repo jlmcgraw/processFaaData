@@ -16,10 +16,10 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from operator import attrgetter
 from pathlib import Path
-from typing import TypeAlias
 
 import numpy as np
 import pyogrio
+import pyogrio.errors
 import pyogrio.raw
 from tqdm import tqdm
 
@@ -28,15 +28,15 @@ from faa_nasr import _log
 # {(feature_type, gml_id): {relationship_name: target_uuid}} -- the resolved
 # XLink graph for a single AIXM XML. e.g.
 # ("AirTrafficControlService", "ATC1") -> {"clientAirspace": "uuid-..."}.
-FkLookup: TypeAlias = dict[tuple[str, str], dict[str, str]]
+type FkLookup = dict[tuple[str, str], dict[str, str]]
 
 # Mapping from XML path to that XML's resolved FK lookup.
-PerXmlFkLookup: TypeAlias = dict[Path, FkLookup]
+type PerXmlFkLookup = dict[Path, FkLookup]
 
 # A getter that pulls one of the column dicts off a `_SourceChunk`. Used by
 # `_stack_column` so callers can stack either the regular field columns or
 # the FK columns through the same routine without a stringly-typed selector.
-ColumnGetter: TypeAlias = Callable[["_SourceChunk"], dict[str, np.ndarray]]
+type ColumnGetter = Callable[[_SourceChunk], dict[str, np.ndarray]]
 
 # AIXM top-level feature element names that pyogrio surfaces as separate layers.
 # Used to identify entity boundaries when walking the XML for FK extraction.
@@ -265,9 +265,7 @@ def _read_layer_source(
         meta, _fids, geometry, field_data = pyogrio.raw.read(xml, layer=source_layer)
     except (pyogrio.errors.DataSourceError, IndexError):
         return None
-    n_rows = (
-        len(field_data[0]) if field_data else (len(geometry) if geometry is not None else 0)
-    )
+    n_rows = len(field_data[0]) if field_data else (len(geometry) if geometry is not None else 0)
     if n_rows == 0:
         return None
 
@@ -308,9 +306,7 @@ def _ordered_union(*key_iterables: Iterable[str]) -> list[str]:
     return list(seen)
 
 
-def _stack_column(
-    name: str, chunks: list[_SourceChunk], getter: ColumnGetter
-) -> np.ndarray:
+def _stack_column(name: str, chunks: list[_SourceChunk], getter: ColumnGetter) -> np.ndarray:
     """Concatenate `name` across chunks, padding chunks that lack it with None.
 
     `getter` extracts the relevant column dict from each chunk -- typically
@@ -343,9 +339,7 @@ def _merge_chunks(chunks: list[_SourceChunk]) -> _MergedLayer | None:
 
     field_data = [_stack_column(n, chunks, get_fields) for n in field_order]
     fk_data = [_stack_column(n, chunks, get_fks) for n in fk_order]
-    source_xmls = np.array(
-        [c.xml_stem for c in chunks for _ in range(c.n_rows)], dtype=object
-    )
+    source_xmls = np.array([c.xml_stem for c in chunks for _ in range(c.n_rows)], dtype=object)
     geometry = np.concatenate([c.geometry for c in chunks])
 
     geom_type = next((c.geom_type for c in chunks if c.geom_type), None)
@@ -396,8 +390,7 @@ def _merge_and_write_layer(
     chunks = [
         chunk
         for xml, source_layer in sources
-        if (chunk := _read_layer_source(xml, source_layer, fk_per_xml.get(xml, {})))
-        is not None
+        if (chunk := _read_layer_source(xml, source_layer, fk_per_xml.get(xml, {}))) is not None
     ]
     merged = _merge_chunks(chunks)
     if merged is None:
@@ -498,8 +491,7 @@ def _write_attribute_only_table(
         conn.execute(f'CREATE TABLE "{table}" ({cols})')
         placeholders = ",".join("?" * len(fields))
         rows = (
-            tuple("" if v is None else str(v) for v in row)
-            for row in zip(*field_data, strict=True)
+            tuple("" if v is None else str(v) for v in row) for row in zip(*field_data, strict=True)
         )
         conn.executemany(f'INSERT INTO "{table}" VALUES ({placeholders})', rows)
         conn.commit()

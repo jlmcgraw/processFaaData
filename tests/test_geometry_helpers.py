@@ -30,9 +30,7 @@ def conn() -> Iterator[sqlite3.Connection]:
 
 def _stub_geometry_columns(conn: sqlite3.Connection) -> None:
     """Create a minimal geometry_columns matching SpatiaLite's shape."""
-    conn.execute(
-        "CREATE TABLE geometry_columns (f_table_name TEXT, f_geometry_column TEXT)"
-    )
+    conn.execute("CREATE TABLE geometry_columns (f_table_name TEXT, f_geometry_column TEXT)")
 
 
 # ---------------------------------------------------------------------------
@@ -96,9 +94,7 @@ def test_already_geometric_false_when_table_not_in_geometry_columns(conn):
 
 def test_already_geometric_true_for_exact_match(conn):
     _stub_geometry_columns(conn)
-    conn.execute(
-        "INSERT INTO geometry_columns VALUES (?, ?)", ("APT_BASE", "geometry")
-    )
+    conn.execute("INSERT INTO geometry_columns VALUES (?, ?)", ("APT_BASE", "geometry"))
     g = PointGeom("APT_BASE", "geometry", "LON", "LAT")
     assert _already_geometric(conn, g) is True
 
@@ -108,36 +104,28 @@ def test_already_geometric_handles_lowercase_storage(conn):
     (or in whatever case the original entity used), so the lookup must compare
     via LOWER(). Without this, build-spatial-twice fails idempotency."""
     _stub_geometry_columns(conn)
-    conn.execute(
-        "INSERT INTO geometry_columns VALUES (?, ?)", ("apt_base", "geometry")
-    )
+    conn.execute("INSERT INTO geometry_columns VALUES (?, ?)", ("apt_base", "geometry"))
     g = PointGeom("APT_BASE", "geometry", "LON", "LAT")
     assert _already_geometric(conn, g) is True
 
 
 def test_already_geometric_handles_mixed_case_query(conn):
     _stub_geometry_columns(conn)
-    conn.execute(
-        "INSERT INTO geometry_columns VALUES (?, ?)", ("APT_BASE", "GEOMETRY")
-    )
+    conn.execute("INSERT INTO geometry_columns VALUES (?, ?)", ("APT_BASE", "GEOMETRY"))
     g = PointGeom("apt_base", "geometry", "LON", "LAT")
     assert _already_geometric(conn, g) is True
 
 
 def test_already_geometric_distinguishes_different_tables(conn):
     _stub_geometry_columns(conn)
-    conn.execute(
-        "INSERT INTO geometry_columns VALUES (?, ?)", ("OTHER_TABLE", "geometry")
-    )
+    conn.execute("INSERT INTO geometry_columns VALUES (?, ?)", ("OTHER_TABLE", "geometry"))
     g = PointGeom("APT_BASE", "geometry", "LON", "LAT")
     assert _already_geometric(conn, g) is False
 
 
 def test_already_geometric_distinguishes_different_columns(conn):
     _stub_geometry_columns(conn)
-    conn.execute(
-        "INSERT INTO geometry_columns VALUES (?, ?)", ("APT_BASE", "other_geom")
-    )
+    conn.execute("INSERT INTO geometry_columns VALUES (?, ?)", ("APT_BASE", "other_geom"))
     g = PointGeom("APT_BASE", "geometry", "LON", "LAT")
     assert _already_geometric(conn, g) is False
 

@@ -13,9 +13,7 @@ app = typer.Typer(
 
 @app.callback()
 def _root(
-    quiet: bool = typer.Option(
-        False, "--quiet", "-q", help="Suppress progress output on stderr."
-    ),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress progress output on stderr."),
 ) -> None:
     from faa_nasr import _log
 
@@ -78,7 +76,8 @@ def build(
     edition: str = typer.Option("current", "--edition"),
 ) -> None:
     """End-to-end pipeline: fetch -> build-tables -> build-spatial -> build-airspace."""
-    from faa_nasr import airspace, fetch as _fetch, geometry, tables
+    from faa_nasr import airspace, geometry, tables
+    from faa_nasr import fetch as _fetch
 
     fetched = _fetch.fetch(out_dir=work_dir, edition=edition, include_obstacles=True)
     nasr_db = out_dir / "nasr.sqlite"
