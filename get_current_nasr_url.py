@@ -6,7 +6,7 @@ import errno, sys
 
 # The URL to get data from
 # "edition=next" to get the upcoming edition
-url="https://soa.smext.faa.gov/apra/nfdc/nasr/chart?edition=current"
+url="https://external-api.faa.gov/apra/nfdc/nasr/chart?edition=current"
 
 # Some sample JSON for testing with
 sample_json="""

@@ -1,17 +1,27 @@
 -- PRAGMA foreign_keys=ON;
 PRAGMA synchronous=OFF;
+-- SpatiaLite 5+ uses RTreeAlign() inside CreateSpatialIndex; the SQLite
+-- "untrusted schema" guard rejects it. Enable trusted_schema or every
+-- spatial-index creation aborts the batch before the geometry UPDATEs run
+-- (leaving geometry columns populated structurally but with NULL data).
+PRAGMA trusted_schema=ON;
 -- PRAGMA journal_mode=MEMORY;
 -- PRAGMA default_cache_size=10000;
 -- PRAGMA locking_mode=EXCLUSIVE;
 
--- The old way of loading spatialite
--- SELECT load_extension('libspatialite.so');
--- The new way
--- See https://www.gaia-gis.it/fossil/libspatialite/wiki?name=mod_spatialite
+-- Try several candidate paths for mod_spatialite. The first one that
+-- resolves wins; sqlite3 continues past failures in batch mode, so this is
+-- safe even when most paths don't exist. Order matters only for noise in
+-- stderr — functionality is unaffected once any one succeeds.
+--   * bare name: works on Linux when the loader's search path includes the
+--     SpatiaLite install dir (e.g. Ubuntu's /usr/lib/x86_64-linux-gnu).
+--   * .so suffix: alternate Linux name; some packages register both.
+--   * /opt/homebrew/lib: macOS Apple Silicon Homebrew default.
+--   * /usr/local/lib:    macOS Intel Homebrew default.
 SELECT load_extension('mod_spatialite');
--- 2018-06-08 added the .so extension because module stopped loading
---            I'm leaving the original line in as well
 SELECT load_extension('mod_spatialite.so');
+SELECT load_extension('/opt/homebrew/lib/mod_spatialite');
+SELECT load_extension('/usr/local/lib/mod_spatialite');
 SELECT InitSpatialMetadata(1);
 
 /*
