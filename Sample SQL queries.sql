@@ -16,6 +16,41 @@ WHERE
     Within(GeomFromText('POINT(-80.79 34.04)', 4326), GEOMETRY);
 
 --------------------------------------------------------------------------------
+-- Find which special-use airspace (MOA / restricted / prohibited / etc.)
+-- contains a given point. The Airspace table merges every per-airspace AIXM
+-- file into one row per airspace, with `_source_xml` carrying the human-
+-- readable airspace name (e.g. "R-6001A FORT JACKSON, SC").
+-- $ spatialite special_use_airspace_spatialite.sqlite
+--------------------------------------------------------------------------------
+SELECT
+    designator,
+    name,
+    saaType,
+    administrativeArea,
+    _source_xml
+FROM
+    Airspace
+WHERE
+    Within(GeomFromText('POINT(-80.79 34.04)', 4326), GEOMETRY);
+
+--------------------------------------------------------------------------------
+-- Join Airspace polygons to their controlling Unit using `_source_xml` --
+-- the per-airspace metadata tables (Unit, OrganisationAuthority, etc.) all
+-- carry the same `_source_xml` value as their parent Airspace row.
+--------------------------------------------------------------------------------
+SELECT
+    a.designator,
+    a.name,
+    u.name AS controlling_unit
+FROM
+    Airspace AS a
+    LEFT JOIN Unit AS u ON u._source_xml = a._source_xml
+WHERE
+    a.administrativeArea = 'ALABAMA'
+ORDER BY
+    a.designator;
+
+--------------------------------------------------------------------------------
 -- All obstacles within 5 NM of a point, tallest first.
 -- Note: for SRID 4326, PtDistWithin / Distance return meters (not degrees).
 -- $ spatialite spatialite_nasr.sqlite
