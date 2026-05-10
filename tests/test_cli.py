@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from faa_nasr import _log, airspace, fetch, geometry, tables
+from faa_nasr import _log, airspace, edai, fetch, geometry, tables
 from faa_nasr.cli import app
 
 runner = CliRunner()
@@ -200,6 +200,50 @@ def test_build_airspace_passes_args(monkeypatch: pytest.MonkeyPatch):
     assert result.exit_code == 0
     assert captured["nasr_dir"] == Path("/tmp/nasr")
     assert captured["out_dir"] == Path("/tmp/out")
+
+
+def test_fetch_edai_passes_out_dir(monkeypatch: pytest.MonkeyPatch):
+    captured: dict[str, Any] = {}
+
+    def fake_fetch(out_dir: Path) -> edai.EdaiFetchResult:
+        captured["out_dir"] = out_dir
+        return edai.EdaiFetchResult(
+            download_dir=out_dir / "edai_downloads",
+            extract_dir=out_dir / "edai_extracted",
+        )
+
+    monkeypatch.setattr(edai, "fetch", fake_fetch)
+
+    result = runner.invoke(app, ["fetch-edai", "--out", "/tmp/edai"])
+
+    assert result.exit_code == 0
+    assert captured["out_dir"] == Path("/tmp/edai")
+
+
+def test_build_edai_chains_fetch_then_build(monkeypatch: pytest.MonkeyPatch, tmp_path):
+    captured: dict[str, Any] = {}
+    fetched = edai.EdaiFetchResult(download_dir=tmp_path / "dl", extract_dir=tmp_path / "ex")
+
+    def fake_fetch(out_dir: Path) -> edai.EdaiFetchResult:
+        captured["fetch_out_dir"] = out_dir
+        return fetched
+
+    def fake_build(out_dir: Path, extract_dir: Path) -> None:
+        captured["build_out_dir"] = out_dir
+        captured["build_extract_dir"] = extract_dir
+
+    monkeypatch.setattr(edai, "fetch", fake_fetch)
+    monkeypatch.setattr(edai, "build", fake_build)
+
+    result = runner.invoke(
+        app, ["build-edai", "--out", str(tmp_path / "out"), "--work-dir", str(tmp_path / "work")]
+    )
+
+    assert result.exit_code == 0
+    assert captured["fetch_out_dir"] == tmp_path / "work"
+    assert captured["build_out_dir"] == tmp_path / "out"
+    # The build step gets the extract dir from the fetch result.
+    assert captured["build_extract_dir"] == fetched.extract_dir
 
 
 def test_build_chains_all_stages(monkeypatch: pytest.MonkeyPatch, tmp_path):

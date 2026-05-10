@@ -69,6 +69,28 @@ def build_airspace_cmd(
     airspace.build(nasr_dir=nasr_dir, out_dir=out_dir)
 
 
+@app.command("fetch-edai")
+def fetch_edai_cmd(
+    out_dir: Path = typer.Option(Path("./local_data"), "--out", "-o"),
+) -> None:
+    """Download FAA EDAI shapefile datasets from ArcGIS Hub (timestamp-cached)."""
+    from faa_nasr import edai
+
+    edai.fetch(out_dir=out_dir)
+
+
+@app.command("build-edai")
+def build_edai_cmd(
+    out_dir: Path = typer.Option(Path("."), "--out", "-o"),
+    work_dir: Path = typer.Option(Path("./local_data"), "--work-dir"),
+) -> None:
+    """Fetch EDAI shapefile datasets and build edai_spatialite.sqlite."""
+    from faa_nasr import edai
+
+    fetched = edai.fetch(out_dir=work_dir)
+    edai.build(out_dir=out_dir, extract_dir=fetched.extract_dir)
+
+
 @app.command()
 def build(
     out_dir: Path = typer.Option(Path("."), "--out", "-o"),

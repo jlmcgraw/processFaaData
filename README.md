@@ -11,6 +11,7 @@ The pipeline produces three files:
 | `nasr.sqlite` | One SQLite table per NASR CSV (e.g. `APT_BASE`, `APT_RWY`, `NAV_BASE`, `FIX_BASE`, `OBSTACLE`), plus SpatiaLite POINT geometry columns and spatial indexes for the airport, navaid, fix, AWOS, ILS, FSS, ATC, holding-pattern, and obstacle tables. |
 | `class_airspace_spatialite.sqlite` | Class B/C/D/E airspace polygons, from `Class_Airspace.shp`. |
 | `special_use_airspace_spatialite.sqlite` | Special use airspace (MOAs, restricted/prohibited areas, etc.) from the SAA AIXM XML. |
+| `edai_spatialite.sqlite` *(optional)* | Built by `nasr build-edai` from the FAA's ArcGIS Hub open-data feed (~20 shapefile datasets). Parallel to NASR data; not part of `nasr build`. |
 
 ## Quick start (recommended: containerized)
 
@@ -39,6 +40,8 @@ nasr build-tables   <csv-dir>  [--db nasr.sqlite] [--obstacle-csv DOF.CSV]
 nasr build-spatial  <db>                                  # adds geometry in place
 nasr build-airspace <nasr-dir> [--out DIR]
 nasr build                     [--out DIR] [--work-dir DIR] [--edition current|next]
+nasr fetch-edai                [--out DIR]                # FAA EDAI open-data shapefiles
+nasr build-edai                [--out DIR] [--work-dir DIR]  # fetch + build edai_spatialite.sqlite
 ```
 
 `build` is the end-to-end pipeline (fetch → build-tables → build-spatial →
