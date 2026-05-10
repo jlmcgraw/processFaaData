@@ -90,5 +90,5 @@ def build(
     airspace.build(nasr_dir=fetched.nasr_dir, out_dir=out_dir)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     app()

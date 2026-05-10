@@ -87,6 +87,19 @@ def test_build_gml_to_uuid_map_skips_features_without_identifier():
     assert _build_gml_to_uuid_map(root) == {}
 
 
+def test_build_gml_to_uuid_map_skips_features_without_gml_id():
+    """Defensive: malformed/draft AIXM might have a feature element with no
+    gml:id. Skip it cleanly rather than indexing on None."""
+    root = _parse(f"""
+        <hasMember {_NS}>
+          <Airspace>
+            <identifier>uuid-orphan</identifier>
+          </Airspace>
+        </hasMember>
+    """)
+    assert _build_gml_to_uuid_map(root) == {}
+
+
 def test_build_gml_to_uuid_map_strips_whitespace_around_uuid():
     root = _parse(f"""
         <hasMember {_NS}>

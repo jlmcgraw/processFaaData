@@ -33,8 +33,8 @@ qa: qa/full  ## Shortcut for qa/full
 
 
 .PHONY: qa/test
-qa/test:  ## Run the tests
-	uv run pytest
+qa/test:  ## Run the tests with coverage report
+	uv run pytest --cov=${PACKAGE_TARGET} --cov-report=term-missing
 
 
 .PHONY: qa/types
