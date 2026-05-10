@@ -170,38 +170,65 @@ ORDER BY
 .output stdout
 
 --------------------------------------------------------------------------------
--- Airway segments as WKT linestrings between consecutive POINT_SEQ values.
--- $ sqlite3 nasr.sqlite
+-- Airway segments as LINESTRINGs (one per FROM_POINT -> TO_POINT edge).
+-- AWY_SEG_ALT.segment_geometry is built at build-spatial time by looking up
+-- both names in a UNION of FIX_BASE.FIX_ID, NAV_BASE.NAV_ID, APT_BASE.ARPT_ID.
+-- $ spatialite nasr.sqlite
 --------------------------------------------------------------------------------
--- Note: AWY_SEG_ALT.csv does not include lon/lat for FROM/TO_POINT; we join to
--- FIX_BASE / NAV_BASE to find them.
-.headers on
-.mode csv
-.output airways.csv
-WITH
-    pt(name, lon, lat) AS (
-        SELECT FIX_ID, LONG_DECIMAL, LAT_DECIMAL FROM FIX_BASE
-        UNION ALL
-        SELECT NAV_ID, LONG_DECIMAL, LAT_DECIMAL FROM NAV_BASE
-    )
 SELECT
-    seg.AWY_ID,
-    seg.POINT_SEQ,
-    seg.FROM_POINT,
-    seg.TO_POINT,
-    seg.MIN_ENROUTE_ALT,
-    seg.MIN_ENROUTE_ALT_OPPOSITE,
-    seg.MAX_AUTH_ALT,
-    'LINESTRING(' || a.lon || ' ' || a.lat || ',' || b.lon || ' ' || b.lat || ')' AS wkt
+    AWY_ID,
+    POINT_SEQ,
+    FROM_POINT,
+    TO_POINT,
+    MIN_ENROUTE_ALT,
+    MAX_AUTH_ALT,
+    ST_AsText(segment_geometry) AS wkt
 FROM
-    AWY_SEG_ALT AS seg
-    JOIN pt AS a ON a.name = seg.FROM_POINT
-    JOIN pt AS b ON b.name = seg.TO_POINT
+    AWY_SEG_ALT
 WHERE
-    seg.AWY_ID = 'V38'
+    AWY_ID = 'V38'
+    AND segment_geometry IS NOT NULL
 ORDER BY
-    seg.AWY_ID, CAST(seg.POINT_SEQ AS INTEGER);
-.output stdout
+    CAST(POINT_SEQ AS INTEGER);
+
+--------------------------------------------------------------------------------
+-- SID/STAR procedure routes as LINESTRINGs. Each row in DP_RTE / STAR_RTE is
+-- one POINT -> NEXT_POINT segment of the procedure.
+--------------------------------------------------------------------------------
+SELECT
+    STAR_COMPUTER_CODE,
+    ROUTE_NAME,
+    POINT_SEQ,
+    POINT,
+    NEXT_POINT,
+    ST_AsText(segment_geometry) AS wkt
+FROM
+    STAR_RTE
+WHERE
+    STAR_COMPUTER_CODE = 'AALAN.BLAID2'
+    AND segment_geometry IS NOT NULL
+ORDER BY
+    ROUTE_NAME, CAST(POINT_SEQ AS INTEGER);
+
+--------------------------------------------------------------------------------
+-- Military training route segments as LINESTRINGs. MTR_PT.segment_geometry is
+-- a self-join: this point's coords -> next point's coords (via NEXT_ROUTE_PT_ID
+-- within the same (ROUTE_TYPE_CODE, ROUTE_ID) partition).
+--------------------------------------------------------------------------------
+SELECT
+    ROUTE_TYPE_CODE,
+    ROUTE_ID,
+    ROUTE_PT_SEQ,
+    ROUTE_PT_ID,
+    NEXT_ROUTE_PT_ID,
+    ST_AsText(segment_geometry) AS wkt
+FROM
+    MTR_PT
+WHERE
+    ROUTE_ID = '002'
+    AND segment_geometry IS NOT NULL
+ORDER BY
+    CAST(ROUTE_PT_SEQ AS INTEGER);
 
 --------------------------------------------------------------------------------
 -- All remarks for airports in a given state.

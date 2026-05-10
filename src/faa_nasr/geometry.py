@@ -61,6 +61,35 @@ class RunwayLineGeom:
     geom_column: str = "runway_geometry"
 
 
+@dataclass(frozen=True)
+class LookupSegmentLineGeom:
+    """A per-row LINESTRING built by looking up two named points (`from_column`,
+    `to_column`) in a UNION of FIX_BASE.FIX_ID, NAV_BASE.NAV_ID, and
+    APT_BASE.ARPT_ID. Used for AWY/DP/STAR segments where each row references
+    fixes/navaids/airports by name rather than carrying coordinates itself.
+    """
+
+    table: str
+    geom_column: str
+    from_column: str
+    to_column: str
+
+
+@dataclass(frozen=True)
+class SelfSegmentLineGeom:
+    """A per-row LINESTRING from this row's geometry to the "next" row's
+    geometry, where next is found by a self-join on `next_id_column =
+    other_id_column` within the same `group_columns` partition. Used for
+    MTR_PT which carries its own coords and references the next point's ID.
+    """
+
+    table: str
+    geom_column: str
+    next_id_column: str
+    other_id_column: str
+    group_columns: tuple[str, ...]
+
+
 # -----------------------------------------------------------------------------
 # Direct POINT geometries: the table itself carries lon/lat columns.
 # -----------------------------------------------------------------------------
@@ -148,6 +177,24 @@ _JOINED_POINT_GEOMS: tuple[JoinedPointGeom, ...] = (
 
 # Single LINESTRING geometry: APT_RWY -> two APT_RWY_END rows.
 _RUNWAY_LINE_GEOM = RunwayLineGeom()
+
+# Per-row LINESTRINGs built via name-lookup against FIX/NAV/APT.
+_LOOKUP_SEGMENT_GEOMS: tuple[LookupSegmentLineGeom, ...] = (
+    LookupSegmentLineGeom("AWY_SEG_ALT", "segment_geometry", "FROM_POINT", "TO_POINT"),
+    LookupSegmentLineGeom("DP_RTE", "segment_geometry", "POINT", "NEXT_POINT"),
+    LookupSegmentLineGeom("STAR_RTE", "segment_geometry", "POINT", "NEXT_POINT"),
+)
+
+# Per-row LINESTRINGs built via self-join (this point -> next point in route).
+_SELF_SEGMENT_GEOMS: tuple[SelfSegmentLineGeom, ...] = (
+    SelfSegmentLineGeom(
+        table="MTR_PT",
+        geom_column="segment_geometry",
+        next_id_column="NEXT_ROUTE_PT_ID",
+        other_id_column="ROUTE_PT_ID",
+        group_columns=("ROUTE_TYPE_CODE", "ROUTE_ID"),
+    ),
+)
 
 
 def build(db_path: Path) -> None:
@@ -239,7 +286,56 @@ def build(db_path: Path) -> None:
             runway_count = _populate_runway_lines(conn, _RUNWAY_LINE_GEOM.geom_column)
             _log.info(f"  added {runway_count:,} runway LINESTRINGs")
 
-        # Pass 4: build spatial indexes against everything that doesn't have one.
+        # Pass 4: lookup-based segment LINESTRINGs (AWY/DP/STAR).
+        # Each row references two point names that resolve in FIX/NAV/APT.
+        # We build a temp `point_lookup` view once and reuse it for all three.
+        existing_lookup_segs = [
+            ls
+            for ls in _LOOKUP_SEGMENT_GEOMS
+            if _table_exists(conn, ls.table)
+            and not _column_already_registered(conn, ls.table, ls.geom_column)
+        ]
+        if existing_lookup_segs and _table_exists(conn, "FIX_BASE"):
+            _ensure_point_lookup(conn)
+            seg_total = 0
+            seg_bar = tqdm(
+                existing_lookup_segs,
+                desc="  lookup segments",
+                unit="col",
+                disable=_log.is_quiet(),
+                leave=True,
+            )
+            for ls in seg_bar:
+                seg_bar.set_postfix_str(f"{ls.table}.{ls.geom_column}", refresh=False)
+                seg_total += _populate_lookup_segment_lines(conn, ls)
+            _log.info(
+                f"  added {seg_total:,} lookup segments across {len(existing_lookup_segs)} columns"
+            )
+
+        # Pass 5: self-join segment LINESTRINGs (MTR_PT).
+        existing_self_segs = [
+            ss
+            for ss in _SELF_SEGMENT_GEOMS
+            if _table_exists(conn, ss.table)
+            and not _column_already_registered(conn, ss.table, ss.geom_column)
+        ]
+        if existing_self_segs:
+            self_total = 0
+            self_bar = tqdm(
+                existing_self_segs,
+                desc="  self segments",
+                unit="col",
+                disable=_log.is_quiet(),
+                leave=True,
+            )
+            for ss in self_bar:
+                self_bar.set_postfix_str(f"{ss.table}.{ss.geom_column}", refresh=False)
+                self_total += _populate_self_segment_lines(conn, ss)
+            _log.info(
+                f"  added {self_total:,} self segments across {len(existing_self_segs)} columns"
+            )
+
+        # Pass 6: build spatial indexes against everything that doesn't have one.
         all_indexed = _all_geom_columns(conn)
         needs_index = [
             (table, col)
@@ -428,6 +524,102 @@ def _populate_joined_point_geometry(conn: sqlite3.Connection, jg: JoinedPointGeo
         f"  LIMIT 1"
         f") "
         f'WHERE "{jg.self_key}" IS NOT NULL AND "{jg.self_key}" <> ""'
+    )
+    return cur.rowcount
+
+
+def _ensure_point_lookup(conn: sqlite3.Connection) -> None:
+    """(Re)build a TEMP `point_lookup` table mapping names to POINT geometries.
+
+    Used by `_populate_lookup_segment_lines` for AWY/DP/STAR. The lookup
+    unions every named-point source whose geometry is already populated
+    (FIX_BASE, NAV_BASE, APT_BASE) so segments can reference any of them.
+    """
+    conn.execute("DROP TABLE IF EXISTS temp.point_lookup")
+    selects: list[str] = []
+    if _table_exists(conn, "FIX_BASE"):
+        selects.append("SELECT FIX_ID AS name, geometry FROM FIX_BASE WHERE geometry IS NOT NULL")
+    if _table_exists(conn, "NAV_BASE"):
+        selects.append("SELECT NAV_ID AS name, geometry FROM NAV_BASE WHERE geometry IS NOT NULL")
+    if _table_exists(conn, "APT_BASE"):
+        selects.append("SELECT ARPT_ID AS name, geometry FROM APT_BASE WHERE geometry IS NOT NULL")
+    if not selects:
+        return
+    conn.execute(f"CREATE TEMP TABLE point_lookup AS {' UNION ALL '.join(selects)}")
+    conn.execute("CREATE INDEX point_lookup_name_idx ON point_lookup(name)")
+
+
+def _populate_lookup_segment_lines(conn: sqlite3.Connection, lsg: LookupSegmentLineGeom) -> int:
+    """For each row of `lsg.table`, build a LINESTRING from `from_column`'s
+    point to `to_column`'s point by looking both up in temp.point_lookup.
+    Rows whose names don't resolve get NULL geometry (silently skipped).
+    """
+    cols = _table_columns(conn, lsg.table)
+    missing = {lsg.from_column, lsg.to_column} - cols
+    if missing:
+        raise ValueError(
+            f"{lsg.table} is missing source columns {sorted(missing)} -- "
+            f"check _LOOKUP_SEGMENT_GEOMS"
+        )
+
+    conn.execute(
+        "SELECT AddGeometryColumn(?, ?, 4326, 'LINESTRING', 'XY')",
+        (lsg.table, lsg.geom_column),
+    )
+    cur = conn.execute(
+        f'UPDATE "{lsg.table}" '
+        f'SET "{lsg.geom_column}" = MakeLine('
+        f"  (SELECT geometry FROM point_lookup "
+        f'   WHERE name = "{lsg.table}"."{lsg.from_column}" LIMIT 1),'
+        f"  (SELECT geometry FROM point_lookup "
+        f'   WHERE name = "{lsg.table}"."{lsg.to_column}" LIMIT 1)'
+        f") "
+        f'WHERE "{lsg.from_column}" IS NOT NULL AND "{lsg.from_column}" <> "" '
+        f'AND "{lsg.to_column}" IS NOT NULL AND "{lsg.to_column}" <> ""'
+    )
+    return cur.rowcount
+
+
+def _populate_self_segment_lines(conn: sqlite3.Connection, ssg: SelfSegmentLineGeom) -> int:
+    """For each row of `ssg.table`, build a LINESTRING from this row's
+    geometry to the row whose `other_id_column` matches our `next_id_column`,
+    scoped to the same `group_columns` partition.
+
+    Requires the table's POINT geometry to already be populated (it sources
+    both endpoints from rows of the same table).
+    """
+    cols = _table_columns(conn, ssg.table)
+    required = {ssg.next_id_column, ssg.other_id_column, "geometry"} | set(ssg.group_columns)
+    missing = required - cols
+    if missing:
+        raise ValueError(
+            f"{ssg.table} is missing source columns {sorted(missing)} -- check _SELF_SEGMENT_GEOMS"
+        )
+
+    # Index supporting the next-point lookup.
+    idx_cols = ",".join([*ssg.group_columns, ssg.other_id_column])
+    quoted = ", ".join(f'"{c}"' for c in [*ssg.group_columns, ssg.other_id_column])
+    conn.execute(
+        f'CREATE INDEX IF NOT EXISTS "idx_seg_{ssg.table}_{idx_cols.replace(",", "_")}" '
+        f'ON "{ssg.table}" ({quoted})'
+    )
+
+    conn.execute(
+        "SELECT AddGeometryColumn(?, ?, 4326, 'LINESTRING', 'XY')",
+        (ssg.table, ssg.geom_column),
+    )
+    group_match = " AND ".join(f'nxt."{g}" = "{ssg.table}"."{g}"' for g in ssg.group_columns)
+    cur = conn.execute(
+        f'UPDATE "{ssg.table}" '
+        f'SET "{ssg.geom_column}" = MakeLine('
+        f"  geometry,"
+        f'  (SELECT nxt.geometry FROM "{ssg.table}" AS nxt '
+        f"   WHERE {group_match} "
+        f'   AND nxt."{ssg.other_id_column}" = "{ssg.table}"."{ssg.next_id_column}" '
+        f"   LIMIT 1)"
+        f") "
+        f'WHERE "{ssg.next_id_column}" IS NOT NULL AND "{ssg.next_id_column}" <> "" '
+        f"AND geometry IS NOT NULL"
     )
     return cur.rowcount
 

@@ -312,6 +312,159 @@ def test_populate_runway_lines_validates_shared_keys():
         geometry._populate_runway_lines(_as_conn(conn), "runway_geometry")
 
 
+class _LookupSegConn:
+    """Mock connection for the lookup-segment / self-segment / point-lookup
+    helpers. Tracks `tables_seen` (return rows from sqlite_master), per-table
+    column maps, and records every SQL call."""
+
+    def __init__(
+        self,
+        *,
+        tables_seen: tuple[str, ...] = (),
+        columns_per_table: dict[str, tuple[str, ...]] | None = None,
+    ) -> None:
+        self._tables_seen = set(tables_seen)
+        self._columns_per_table = columns_per_table or {}
+        self.calls: list[tuple[str, tuple[Any, ...]]] = []
+
+    def execute(self, sql: str, params: tuple[Any, ...] = ()) -> _PopulationCursor:
+        self.calls.append((sql, params))
+        if sql.startswith("PRAGMA table_info"):
+            table = sql.split('"')[1]
+            cols = self._columns_per_table.get(table, ())
+            return _PopulationCursor.with_rows(
+                [(i, name, "TEXT", 0, None, 0) for i, name in enumerate(cols)]
+            )
+        if "sqlite_master" in sql and "name=?" in sql:
+            (name,) = params
+            return _PopulationCursor(row=(name,) if name in self._tables_seen else None)
+        if sql.startswith("UPDATE"):
+            return _PopulationCursor(rowcount=42)
+        return _PopulationCursor(rowcount=0)
+
+
+# ---------------------------------------------------------------------------
+# _ensure_point_lookup
+# ---------------------------------------------------------------------------
+
+
+def test_ensure_point_lookup_unions_present_tables():
+    """Builds a UNION over whichever of FIX_BASE/NAV_BASE/APT_BASE exist."""
+    conn = _LookupSegConn(tables_seen=("FIX_BASE", "NAV_BASE", "APT_BASE"))
+    geometry._ensure_point_lookup(_as_conn(conn))
+    create_calls = [c[0] for c in conn.calls if c[0].startswith("CREATE TEMP TABLE")]
+    assert len(create_calls) == 1
+    sql = create_calls[0]
+    assert "FIX_BASE" in sql and "NAV_BASE" in sql and "APT_BASE" in sql
+    # And an index on the name column.
+    assert any("CREATE INDEX point_lookup_name_idx" in c[0] for c in conn.calls)
+
+
+def test_ensure_point_lookup_skips_missing_tables():
+    """If only FIX_BASE exists, the UNION is just that one source."""
+    conn = _LookupSegConn(tables_seen=("FIX_BASE",))
+    geometry._ensure_point_lookup(_as_conn(conn))
+    create_calls = [c[0] for c in conn.calls if c[0].startswith("CREATE TEMP TABLE")]
+    assert len(create_calls) == 1
+    sql = create_calls[0]
+    assert "FIX_BASE" in sql
+    assert "NAV_BASE" not in sql
+    assert "APT_BASE" not in sql
+
+
+def test_ensure_point_lookup_no_op_when_no_sources():
+    """If none of FIX/NAV/APT exist, no table is created."""
+    conn = _LookupSegConn(tables_seen=())
+    geometry._ensure_point_lookup(_as_conn(conn))
+    create_calls = [c[0] for c in conn.calls if c[0].startswith("CREATE TEMP TABLE")]
+    assert create_calls == []
+
+
+# ---------------------------------------------------------------------------
+# _populate_lookup_segment_lines
+# ---------------------------------------------------------------------------
+
+
+def test_populate_lookup_segment_lines_validates_columns():
+    conn = _LookupSegConn(columns_per_table={"AWY_SEG_ALT": ("OTHER",)})
+    lsg = geometry.LookupSegmentLineGeom(
+        "AWY_SEG_ALT", "segment_geometry", "FROM_POINT", "TO_POINT"
+    )
+    with pytest.raises(ValueError, match="missing source columns"):
+        geometry._populate_lookup_segment_lines(_as_conn(conn), lsg)
+
+
+def test_populate_lookup_segment_lines_runs_when_columns_present():
+    conn = _LookupSegConn(columns_per_table={"AWY_SEG_ALT": ("FROM_POINT", "TO_POINT")})
+    lsg = geometry.LookupSegmentLineGeom(
+        "AWY_SEG_ALT", "segment_geometry", "FROM_POINT", "TO_POINT"
+    )
+    geometry._populate_lookup_segment_lines(_as_conn(conn), lsg)
+
+    add_calls = [c for c in conn.calls if "AddGeometryColumn" in c[0]]
+    update_calls = [c for c in conn.calls if c[0].startswith("UPDATE")]
+    assert len(add_calls) == 1
+    assert "LINESTRING" in add_calls[0][0]
+    assert add_calls[0][1] == ("AWY_SEG_ALT", "segment_geometry")
+    assert len(update_calls) == 1
+    assert "MakeLine" in update_calls[0][0]
+    assert "point_lookup" in update_calls[0][0]
+
+
+# ---------------------------------------------------------------------------
+# _populate_self_segment_lines
+# ---------------------------------------------------------------------------
+
+
+def test_populate_self_segment_lines_validates_columns():
+    conn = _LookupSegConn(columns_per_table={"MTR_PT": ("OTHER",)})
+    ssg = geometry.SelfSegmentLineGeom(
+        table="MTR_PT",
+        geom_column="segment_geometry",
+        next_id_column="NEXT_ROUTE_PT_ID",
+        other_id_column="ROUTE_PT_ID",
+        group_columns=("ROUTE_TYPE_CODE", "ROUTE_ID"),
+    )
+    with pytest.raises(ValueError, match="missing source columns"):
+        geometry._populate_self_segment_lines(_as_conn(conn), ssg)
+
+
+def test_populate_self_segment_lines_runs_when_columns_present():
+    conn = _LookupSegConn(
+        columns_per_table={
+            "MTR_PT": (
+                "ROUTE_TYPE_CODE",
+                "ROUTE_ID",
+                "ROUTE_PT_ID",
+                "NEXT_ROUTE_PT_ID",
+                "geometry",
+            )
+        }
+    )
+    ssg = geometry.SelfSegmentLineGeom(
+        table="MTR_PT",
+        geom_column="segment_geometry",
+        next_id_column="NEXT_ROUTE_PT_ID",
+        other_id_column="ROUTE_PT_ID",
+        group_columns=("ROUTE_TYPE_CODE", "ROUTE_ID"),
+    )
+    geometry._populate_self_segment_lines(_as_conn(conn), ssg)
+
+    add_calls = [c for c in conn.calls if "AddGeometryColumn" in c[0]]
+    index_calls = [c for c in conn.calls if "CREATE INDEX" in c[0]]
+    update_calls = [c for c in conn.calls if c[0].startswith("UPDATE")]
+    assert len(add_calls) == 1
+    assert "LINESTRING" in add_calls[0][0]
+    # An index supporting the next-point self-join is created.
+    assert len(index_calls) == 1
+    assert "ROUTE_TYPE_CODE" in index_calls[0][0]
+    assert "ROUTE_PT_ID" in index_calls[0][0]
+    # The UPDATE uses MakeLine + a self-join on the table.
+    assert len(update_calls) == 1
+    assert "MakeLine" in update_calls[0][0]
+    assert "MTR_PT" in update_calls[0][0]
+
+
 def test_populate_runway_lines_runs_when_keys_present():
     conn = _JoinedConn(
         columns_per_table={
@@ -412,6 +565,7 @@ def _patch_geometry_internals(
     existing_point_geoms: list[geometry.PointGeom] | None = None,
     already_geometric_keys: set[tuple[str, str]] | None = None,
     existing_joined_geoms: list[geometry.JoinedPointGeom] | None = None,
+    tables_present: set[str] | None = None,
     apt_rwy_present: bool = False,
     indexed_columns: set[tuple[str, str]] | None = None,
     all_geom_columns: list[tuple[str, str]] | None = None,
@@ -434,11 +588,10 @@ def _patch_geometry_internals(
         "_joined_geom_already_present",
         lambda _c, g: (g.table, g.geom_column) in (already_geometric_keys or set()),
     )
-    monkeypatch.setattr(
-        geometry,
-        "_table_exists",
-        lambda _c, t: apt_rwy_present and t in {"APT_RWY", "APT_RWY_END"},
+    seen_tables = (tables_present or set()) | (
+        {"APT_RWY", "APT_RWY_END"} if apt_rwy_present else set()
     )
+    monkeypatch.setattr(geometry, "_table_exists", lambda _c, t: t in seen_tables)
     monkeypatch.setattr(
         geometry,
         "_column_already_registered",
@@ -448,6 +601,9 @@ def _patch_geometry_internals(
     monkeypatch.setattr(geometry, "_populate_point_geometry", lambda _c, _g: 0)
     monkeypatch.setattr(geometry, "_populate_joined_point_geometry", lambda _c, _g: 0)
     monkeypatch.setattr(geometry, "_populate_runway_lines", lambda _c, _col: 0)
+    monkeypatch.setattr(geometry, "_populate_lookup_segment_lines", lambda _c, _g: 0)
+    monkeypatch.setattr(geometry, "_populate_self_segment_lines", lambda _c, _g: 0)
+    monkeypatch.setattr(geometry, "_ensure_point_lookup", lambda _c: None)
     monkeypatch.setattr(geometry, "_ensure_join_indexes", lambda _c, indexes: None)
     monkeypatch.setattr(geometry, "_all_geom_columns", lambda _c: all_geom_columns or [])
     monkeypatch.setattr(
@@ -597,6 +753,100 @@ def test_build_runs_runway_lines_when_apt_rwy_tables_present(
     geometry.build(db_path=db)
 
     assert runway_calls == [geometry._RUNWAY_LINE_GEOM.geom_column]
+
+
+def test_build_runs_lookup_segment_lines_when_fix_base_present(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+):
+    """Pass 4 builds AWY/DP/STAR LINESTRINGs by joining to a point lookup
+    table. Only fires when FIX_BASE exists (so the lookup has a source)
+    and at least one of the AWY/DP/STAR tables is present."""
+    conn = _RecordingExecConn()
+    seg_calls: list[str] = []
+    ensure_lookup_called = [False]
+
+    def fake_ensure(_c: object) -> None:
+        ensure_lookup_called[0] = True
+
+    def fake_seg(_c: object, ls: geometry.LookupSegmentLineGeom) -> int:
+        seg_calls.append(ls.table)
+        return 100
+
+    _patch_geometry_internals(
+        monkeypatch,
+        conn,
+        tables_present={"FIX_BASE", "AWY_SEG_ALT", "DP_RTE", "STAR_RTE"},
+    )
+    monkeypatch.setattr(geometry, "_ensure_point_lookup", fake_ensure)
+    monkeypatch.setattr(geometry, "_populate_lookup_segment_lines", fake_seg)
+    db = tmp_path / "nasr.sqlite"
+    db.write_text("")
+
+    geometry.build(db_path=db)
+
+    assert ensure_lookup_called[0] is True
+    assert sorted(seg_calls) == ["AWY_SEG_ALT", "DP_RTE", "STAR_RTE"]
+
+
+def test_build_skips_lookup_segments_when_no_source_tables(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+):
+    """If neither FIX_BASE nor any of the AWY/DP/STAR tables exist, the
+    lookup-segments pass is a no-op."""
+    conn = _RecordingExecConn()
+    seg_calls: list[str] = []
+
+    def fake_seg(_c: object, ls: geometry.LookupSegmentLineGeom) -> int:
+        seg_calls.append(ls.table)
+        return 0
+
+    _patch_geometry_internals(monkeypatch, conn, tables_present=set())
+    monkeypatch.setattr(geometry, "_populate_lookup_segment_lines", fake_seg)
+    db = tmp_path / "nasr.sqlite"
+    db.write_text("")
+
+    geometry.build(db_path=db)
+
+    assert seg_calls == []
+
+
+def test_build_runs_self_segment_lines_when_mtr_pt_present(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+):
+    """Pass 5 builds MTR_PT self-segments only when the table exists."""
+    conn = _RecordingExecConn()
+    seg_calls: list[str] = []
+
+    def fake_seg(_c: object, ss: geometry.SelfSegmentLineGeom) -> int:
+        seg_calls.append(ss.table)
+        return 50
+
+    _patch_geometry_internals(monkeypatch, conn, tables_present={"MTR_PT"})
+    monkeypatch.setattr(geometry, "_populate_self_segment_lines", fake_seg)
+    db = tmp_path / "nasr.sqlite"
+    db.write_text("")
+
+    geometry.build(db_path=db)
+
+    assert seg_calls == ["MTR_PT"]
+
+
+def test_build_skips_self_segments_when_mtr_pt_missing(monkeypatch: pytest.MonkeyPatch, tmp_path):
+    conn = _RecordingExecConn()
+    seg_calls: list[str] = []
+
+    def fake_seg(_c: object, ss: geometry.SelfSegmentLineGeom) -> int:
+        seg_calls.append(ss.table)
+        return 0
+
+    _patch_geometry_internals(monkeypatch, conn, tables_present=set())
+    monkeypatch.setattr(geometry, "_populate_self_segment_lines", fake_seg)
+    db = tmp_path / "nasr.sqlite"
+    db.write_text("")
+
+    geometry.build(db_path=db)
+
+    assert seg_calls == []
 
 
 def test_build_skips_runway_lines_when_apt_rwy_missing(monkeypatch: pytest.MonkeyPatch, tmp_path):
