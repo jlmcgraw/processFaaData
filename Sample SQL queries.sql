@@ -222,6 +222,54 @@ ORDER BY
     apt.ARPT_ID, rmk.TAB_NAME, rmk.REF_COL_NAME;
 
 --------------------------------------------------------------------------------
+-- Runway shapes as LINESTRINGs (use this to render runway centerlines).
+-- APT_RWY.runway_geometry is built at build-spatial time by joining APT_RWY
+-- to its two APT_RWY_END rows on (SITE_NO, RWY_ID).
+-- $ spatialite nasr.sqlite
+--------------------------------------------------------------------------------
+SELECT
+    apt.ARPT_ID,
+    rwy.RWY_ID,
+    rwy.RWY_LEN,
+    ST_AsText(rwy.runway_geometry) AS shape
+FROM
+    APT_BASE AS apt
+    JOIN APT_RWY AS rwy ON rwy.SITE_NO = apt.SITE_NO
+WHERE
+    apt.ARPT_ID = 'RIC';
+
+--------------------------------------------------------------------------------
+-- ATC tower locations -- ATC_BASE.geometry is populated at build-spatial time
+-- by looking up the airport via SITE_NO (ATC_BASE itself has no lat/long).
+--------------------------------------------------------------------------------
+SELECT
+    FACILITY_ID,
+    FACILITY_NAME,
+    TWR_CALL,
+    ST_AsText(geometry) AS location
+FROM
+    ATC_BASE
+WHERE
+    FACILITY_ID IN ('IAD', 'DCA', 'BWI');
+
+--------------------------------------------------------------------------------
+-- Holding pattern -- both fix_geometry (from FIX_BASE.FIX_ID) and
+-- navaid_geometry (from NAV_BASE.NAV_ID) are populated by build-spatial.
+--------------------------------------------------------------------------------
+SELECT
+    HP_NAME,
+    FIX_ID,
+    NAV_ID,
+    HOLD_DIRECTION,
+    LEG_LENGTH_DIST,
+    ST_AsText(fix_geometry)    AS fix_loc,
+    ST_AsText(navaid_geometry) AS nav_loc
+FROM
+    HPF_BASE
+WHERE
+    FIX_ID = 'AABEE';
+
+--------------------------------------------------------------------------------
 -- Runway lengths/widths for a given airport.
 --------------------------------------------------------------------------------
 SELECT

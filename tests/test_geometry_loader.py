@@ -88,28 +88,63 @@ def test_load_mod_spatialite_message_lists_all_candidates():
 class _PopulationConn:
     """Records SQL strings + reports rowcount for the UPDATE call.
 
-    Mimics just enough of sqlite3.Connection for _populate_point_geometry.
+    Mimics just enough of sqlite3.Connection for _populate_point_geometry,
+    _populate_joined_point_geometry, and _ensure_join_indexes:
+    - PRAGMA table_info(...) returns rows shaped (cid, name, type, notnull, default, pk).
+    - SELECT FROM sqlite_master returns one row when `tables_seen` includes the
+      argument (used by _table_exists).
+    - UPDATE returns the configured rowcount.
     """
 
-    def __init__(self, update_rowcount: int) -> None:
+    def __init__(
+        self,
+        update_rowcount: int,
+        columns: tuple[str, ...] = (),
+        tables_seen: tuple[str, ...] = (),
+    ) -> None:
         self.update_rowcount = update_rowcount
+        self._columns = columns
+        self._tables_seen = set(tables_seen)
         self.calls: list[tuple[str, tuple[Any, ...]]] = []
 
     def execute(self, sql: str, params: tuple[Any, ...] = ()) -> _PopulationCursor:
         self.calls.append((sql, params))
-        # The function uses .rowcount only on the UPDATE result.
+        if sql.startswith("PRAGMA table_info"):
+            return _PopulationCursor.with_rows(
+                [(i, name, "TEXT", 0, None, 0) for i, name in enumerate(self._columns)]
+            )
+        if "sqlite_master" in sql and "name=?" in sql:
+            (name,) = params
+            return _PopulationCursor(row=(name,) if name in self._tables_seen else None)
         if sql.startswith("UPDATE"):
             return _PopulationCursor(rowcount=self.update_rowcount)
         return _PopulationCursor(rowcount=0)
 
 
 class _PopulationCursor:
-    def __init__(self, rowcount: int) -> None:
+    def __init__(
+        self,
+        rowcount: int = 0,
+        rows: list[Any] | None = None,
+        row: tuple[Any, ...] | None = None,
+    ) -> None:
         self.rowcount = rowcount
+        self._rows = rows or []
+        self._row = row
+
+    @classmethod
+    def with_rows(cls, rows: list[Any]) -> _PopulationCursor:
+        return cls(rows=rows)
+
+    def fetchall(self) -> list[Any]:
+        return self._rows
+
+    def fetchone(self) -> tuple[Any, ...] | None:
+        return self._row
 
 
 def test_populate_point_geometry_calls_add_geometry_then_update():
-    conn = _PopulationConn(update_rowcount=42)
+    conn = _PopulationConn(update_rowcount=42, columns=("LONG_DECIMAL", "LAT_DECIMAL", "OTHER"))
     g = geometry.PointGeom(
         table="APT_BASE",
         geom_column="geometry",
@@ -120,11 +155,13 @@ def test_populate_point_geometry_calls_add_geometry_then_update():
     n = geometry._populate_point_geometry(_as_conn(conn), g)
 
     assert n == 42
-    # Two SQL calls: AddGeometryColumn (parametrized), then UPDATE (built dynamically).
-    assert len(conn.calls) == 2
-    add_sql, add_params = conn.calls[0]
-    update_sql, _ = conn.calls[1]
+    # Three SQL calls: PRAGMA (column existence check), AddGeometryColumn, UPDATE.
+    assert len(conn.calls) == 3
+    pragma_sql, _ = conn.calls[0]
+    add_sql, add_params = conn.calls[1]
+    update_sql, _ = conn.calls[2]
 
+    assert pragma_sql.startswith("PRAGMA table_info")
     assert "AddGeometryColumn" in add_sql
     assert add_params == ("APT_BASE", "geometry")
     assert update_sql.startswith("UPDATE")
@@ -138,13 +175,192 @@ def test_populate_point_geometry_calls_add_geometry_then_update():
 
 
 def test_populate_point_geometry_returns_zero_when_no_rows_updated():
-    conn = _PopulationConn(update_rowcount=0)
+    conn = _PopulationConn(update_rowcount=0, columns=("LON", "LAT"))
     g = geometry.PointGeom("T", "geometry", "LON", "LAT")
     assert geometry._populate_point_geometry(_as_conn(conn), g) == 0
 
 
+def test_populate_point_geometry_raises_when_source_columns_missing():
+    """Regression: SQLite silently treats unknown double-quoted identifiers as
+    string literals, so without the PRAGMA-based column check the UPDATE would
+    produce all-zero POINT(0 0) rows. The validation should fail loudly."""
+    conn = _PopulationConn(update_rowcount=0, columns=("ARPT_ID", "FACILITY_NAME"))
+    g = geometry.PointGeom("T", "geometry", "LONG_DECIMAL", "LAT_DECIMAL")
+    with pytest.raises(ValueError, match="missing source columns"):
+        geometry._populate_point_geometry(_as_conn(conn), g)
+
+
 # ---------------------------------------------------------------------------
-# build() -- top-level error path (file missing)
+# _populate_joined_point_geometry / _populate_runway_lines / _ensure_join_indexes
+# ---------------------------------------------------------------------------
+
+
+class _JoinedConn:
+    """Like _PopulationConn but supports a per-table column map -- the
+    `_populate_joined_point_geometry` helper PRAGMAs both `table` and
+    `join_table` to validate keys, so we need to return different column
+    sets for each."""
+
+    def __init__(self, columns_per_table: dict[str, tuple[str, ...]]) -> None:
+        self._columns_per_table = columns_per_table
+        self.calls: list[tuple[str, tuple[Any, ...]]] = []
+
+    def execute(self, sql: str, params: tuple[Any, ...] = ()) -> _PopulationCursor:
+        self.calls.append((sql, params))
+        if sql.startswith("PRAGMA table_info"):
+            # PRAGMA table_info("X") -- extract X.
+            table = sql.split('"')[1]
+            cols = self._columns_per_table.get(table, ())
+            return _PopulationCursor.with_rows(
+                [(i, name, "TEXT", 0, None, 0) for i, name in enumerate(cols)]
+            )
+        if sql.startswith("UPDATE"):
+            return _PopulationCursor(rowcount=0)
+        return _PopulationCursor(rowcount=0)
+
+
+def test_populate_joined_point_geometry_validates_self_key():
+    conn = _PopulationConn(update_rowcount=0, columns=("OTHER",))
+    jg = geometry.JoinedPointGeom(
+        table="ATC_BASE",
+        geom_column="geometry",
+        join_table="APT_BASE",
+        join_geom_column="geometry",
+        self_key="SITE_NO",
+        other_key="SITE_NO",
+    )
+    with pytest.raises(ValueError, match="missing key column 'SITE_NO'"):
+        geometry._populate_joined_point_geometry(_as_conn(conn), jg)
+
+
+def test_populate_joined_point_geometry_validates_join_table_columns():
+    """The join target's key + geom column are also validated -- if either is
+    missing on join_table, raise."""
+    conn = _JoinedConn(
+        columns_per_table={
+            "ATC_BASE": ("SITE_NO",),
+            "APT_BASE": ("SITE_NO",),  # missing 'geometry' column
+        }
+    )
+    jg = geometry.JoinedPointGeom(
+        table="ATC_BASE",
+        geom_column="geometry",
+        join_table="APT_BASE",
+        join_geom_column="geometry",
+        self_key="SITE_NO",
+        other_key="SITE_NO",
+    )
+    with pytest.raises(ValueError, match=r"APT_BASE is missing"):
+        geometry._populate_joined_point_geometry(_as_conn(conn), jg)
+
+
+def test_populate_joined_point_geometry_runs_full_query_when_valid():
+    """Both keys + join geom present -> AddGeometryColumn + UPDATE-with-subquery
+    runs without raising."""
+    conn = _JoinedConn(
+        columns_per_table={
+            "ATC_BASE": ("SITE_NO",),
+            "APT_BASE": ("SITE_NO", "geometry"),
+        }
+    )
+    jg = geometry.JoinedPointGeom(
+        table="ATC_BASE",
+        geom_column="geometry",
+        join_table="APT_BASE",
+        join_geom_column="geometry",
+        self_key="SITE_NO",
+        other_key="SITE_NO",
+    )
+    geometry._populate_joined_point_geometry(_as_conn(conn), jg)
+
+    add_calls = [c for c in conn.calls if "AddGeometryColumn" in c[0]]
+    update_calls = [c for c in conn.calls if c[0].lstrip().startswith("UPDATE")]
+    assert len(add_calls) == 1
+    assert add_calls[0][1] == ("ATC_BASE", "geometry")
+    assert len(update_calls) == 1
+    assert "ATC_BASE" in update_calls[0][0]
+    assert "APT_BASE" in update_calls[0][0]
+
+
+def test_populate_runway_lines_validates_required_columns():
+    """If APT_RWY_END is missing RWY_END_ID/LAT_DECIMAL/LONG_DECIMAL, raise."""
+    conn = _JoinedConn(
+        columns_per_table={
+            "APT_RWY": ("SITE_NO", "RWY_ID"),
+            "APT_RWY_END": ("SITE_NO", "RWY_ID"),  # missing RWY_END_ID etc.
+        }
+    )
+    with pytest.raises(ValueError, match="APT_RWY_END missing required column"):
+        geometry._populate_runway_lines(_as_conn(conn), "runway_geometry")
+
+
+def test_populate_runway_lines_validates_shared_keys():
+    """SITE_NO/RWY_ID must exist in both APT_RWY and APT_RWY_END."""
+    conn = _JoinedConn(
+        columns_per_table={
+            "APT_RWY": ("SITE_NO",),  # missing RWY_ID
+            "APT_RWY_END": (
+                "SITE_NO",
+                "RWY_ID",
+                "RWY_END_ID",
+                "LAT_DECIMAL",
+                "LONG_DECIMAL",
+            ),
+        }
+    )
+    with pytest.raises(ValueError, match="missing key column 'RWY_ID'"):
+        geometry._populate_runway_lines(_as_conn(conn), "runway_geometry")
+
+
+def test_populate_runway_lines_runs_when_keys_present():
+    conn = _JoinedConn(
+        columns_per_table={
+            "APT_RWY": ("SITE_NO", "RWY_ID"),
+            "APT_RWY_END": (
+                "SITE_NO",
+                "RWY_ID",
+                "RWY_END_ID",
+                "LAT_DECIMAL",
+                "LONG_DECIMAL",
+            ),
+        }
+    )
+    geometry._populate_runway_lines(_as_conn(conn), "runway_geometry")
+
+    add_calls = [c for c in conn.calls if "AddGeometryColumn" in c[0]]
+    update_calls = [c for c in conn.calls if c[0].lstrip().startswith("UPDATE")]
+    assert len(add_calls) == 1
+    assert "LINESTRING" in add_calls[0][0]
+    assert add_calls[0][1] == ("APT_RWY", "runway_geometry")
+    assert len(update_calls) == 1
+    assert "MakeLine" in update_calls[0][0]
+
+
+def test_ensure_join_indexes_creates_index():
+    conn = _PopulationConn(update_rowcount=0, columns=("SITE_NO",), tables_seen=("APT_BASE",))
+    geometry._ensure_join_indexes(_as_conn(conn), [("APT_BASE", "SITE_NO")])
+    create_calls = [c for c in conn.calls if c[0].startswith("CREATE INDEX")]
+    assert len(create_calls) == 1
+    assert "APT_BASE" in create_calls[0][0]
+    assert "SITE_NO" in create_calls[0][0]
+
+
+def test_ensure_join_indexes_skips_when_column_missing():
+    conn = _PopulationConn(update_rowcount=0, columns=("OTHER",), tables_seen=("APT_BASE",))
+    geometry._ensure_join_indexes(_as_conn(conn), [("APT_BASE", "MISSING_COL")])
+    create_calls = [c for c in conn.calls if c[0].startswith("CREATE INDEX")]
+    assert create_calls == []
+
+
+def test_ensure_join_indexes_skips_when_table_missing():
+    conn = _PopulationConn(update_rowcount=0, columns=("SITE_NO",), tables_seen=())
+    geometry._ensure_join_indexes(_as_conn(conn), [("APT_BASE", "SITE_NO")])
+    create_calls = [c for c in conn.calls if c[0].startswith("CREATE INDEX")]
+    assert create_calls == []
+
+
+# ---------------------------------------------------------------------------
+# build() -- top-level error path
 # ---------------------------------------------------------------------------
 
 
@@ -156,62 +372,30 @@ def test_build_raises_filenotfound_for_missing_db(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# build() orchestration -- mocks sqlite3.connect so we don't need spatialite
+# build() orchestration -- mocks the small helpers rather than every SQL call.
+# Each helper is exhaustively tested above / in test_geometry_helpers; here we
+# verify the orchestration logic on top of trustworthy helpers.
 # ---------------------------------------------------------------------------
 
 
-class _OrchestrationConn:
-    """sqlite3.Connection stand-in that records executes and reports configurable
-    sqlite_master / geometry_columns rows."""
+class _RecordingExecConn:
+    """Records every SQL call. PRAGMA / SELECT queries return empty cursors;
+    UPDATE statements report a configurable rowcount."""
 
-    def __init__(
-        self,
-        *,
-        existing_user_tables: set[str],
-        already_geometric: set[str],
-        existing_indexes: set[str],
-        update_rowcount: int,
-    ) -> None:
-        self.executed: list[tuple[str, tuple]] = []
+    def __init__(self, update_rowcount: int = 0) -> None:
+        self.executed: list[tuple[str, tuple[Any, ...]]] = []
         self.committed = False
         self.closed = False
-        self._user_tables = existing_user_tables
-        self._already_geometric = already_geometric
-        self._existing_indexes = existing_indexes
         self._update_rowcount = update_rowcount
 
-    def enable_load_extension(self, _: bool) -> None:
+    def enable_load_extension(self, _enabled: bool) -> None:
         pass
 
-    def execute(self, sql: str, params: tuple = ()) -> _OrchestrationCursor:
+    def execute(self, sql: str, params: tuple[Any, ...] = ()) -> _PopulationCursor:
         self.executed.append((sql, params))
-        # Route _existing_tables's SELECT FROM sqlite_master query.
-        if "sqlite_master" in sql and "type='table'" in sql and "name=?" in sql:
-            (name,) = params
-            return (
-                _OrchestrationCursor.with_row(name)
-                if name in self._user_tables
-                else _OrchestrationCursor.empty()
-            )
-        # Route _spatialite_initialized's check.
-        if "geometry_columns" in sql and "sqlite_master" in sql:
-            return _OrchestrationCursor.with_row("geometry_columns")  # pretend already-init
-        # Route _already_geometric's geometry_columns lookup.
-        if "geometry_columns" in sql and "f_table_name" in sql:
-            (table, _column) = params
-            if table.lower() in {n.lower() for n in self._already_geometric}:
-                return _OrchestrationCursor.with_row(1)
-            return _OrchestrationCursor.empty()
-        # Route _has_spatial_index's idx_<table>_<col> lookup.
-        if "sqlite_master" in sql and "LOWER(name)" in sql:
-            (idx_name,) = params
-            if idx_name in self._existing_indexes:
-                return _OrchestrationCursor.with_row(idx_name)
-            return _OrchestrationCursor.empty()
-        # The bulk UPDATE returns rowcount.
         if sql.startswith("UPDATE"):
-            return _OrchestrationCursor(rowcount=self._update_rowcount)
-        return _OrchestrationCursor.empty()
+            return _PopulationCursor(rowcount=self._update_rowcount)
+        return _PopulationCursor.with_rows([])
 
     def commit(self) -> None:
         self.committed = True
@@ -220,154 +404,215 @@ class _OrchestrationConn:
         self.closed = True
 
 
-class _OrchestrationCursor:
-    def __init__(self, *, row: tuple | None = None, rowcount: int = 0) -> None:
-        self._row = row
-        self.rowcount = rowcount
-
-    @classmethod
-    def with_row(cls, *values: object) -> _OrchestrationCursor:
-        return cls(row=tuple(values))
-
-    @classmethod
-    def empty(cls) -> _OrchestrationCursor:
-        return cls(row=None)
-
-    def fetchone(self) -> tuple | None:
-        return self._row
+def _patch_geometry_internals(
+    monkeypatch: pytest.MonkeyPatch,
+    conn: _RecordingExecConn,
+    *,
+    spatialite_init: bool = True,
+    existing_point_geoms: list[geometry.PointGeom] | None = None,
+    already_geometric_keys: set[tuple[str, str]] | None = None,
+    existing_joined_geoms: list[geometry.JoinedPointGeom] | None = None,
+    apt_rwy_present: bool = False,
+    indexed_columns: set[tuple[str, str]] | None = None,
+    all_geom_columns: list[tuple[str, str]] | None = None,
+) -> None:
+    """Stub all geometry helpers so tests can focus on orchestration."""
+    monkeypatch.setattr(geometry.sqlite3, "connect", lambda _path: conn)
+    monkeypatch.setattr(geometry, "_load_mod_spatialite", lambda _c: None)
+    monkeypatch.setattr(geometry, "_spatialite_initialized", lambda _c: spatialite_init)
+    monkeypatch.setattr(geometry, "_existing_tables", lambda _g, _c: existing_point_geoms or [])
+    monkeypatch.setattr(
+        geometry, "_existing_joined_geoms", lambda _g, _c: existing_joined_geoms or []
+    )
+    monkeypatch.setattr(
+        geometry,
+        "_already_geometric",
+        lambda _c, g: (g.table, g.geom_column) in (already_geometric_keys or set()),
+    )
+    monkeypatch.setattr(
+        geometry,
+        "_joined_geom_already_present",
+        lambda _c, g: (g.table, g.geom_column) in (already_geometric_keys or set()),
+    )
+    monkeypatch.setattr(
+        geometry,
+        "_table_exists",
+        lambda _c, t: apt_rwy_present and t in {"APT_RWY", "APT_RWY_END"},
+    )
+    monkeypatch.setattr(
+        geometry,
+        "_column_already_registered",
+        lambda _c, t, col: (t, col) in (already_geometric_keys or set()),
+    )
+    # Default no-op populators; tests can override individually.
+    monkeypatch.setattr(geometry, "_populate_point_geometry", lambda _c, _g: 0)
+    monkeypatch.setattr(geometry, "_populate_joined_point_geometry", lambda _c, _g: 0)
+    monkeypatch.setattr(geometry, "_populate_runway_lines", lambda _c, _col: 0)
+    monkeypatch.setattr(geometry, "_ensure_join_indexes", lambda _c, indexes: None)
+    monkeypatch.setattr(geometry, "_all_geom_columns", lambda _c: all_geom_columns or [])
+    monkeypatch.setattr(
+        geometry,
+        "_spatial_index_exists",
+        lambda _c, t, col: (t, col) in (indexed_columns or set()),
+    )
 
 
 def test_build_skips_tables_already_geometric(monkeypatch: pytest.MonkeyPatch, tmp_path):
-    """Idempotency: tables whose geometry column is already registered in
-    geometry_columns are skipped entirely (no AddGeometryColumn / UPDATE).
-    """
-    # APT_BASE exists and is already geometric; AWOS exists but isn't.
-    fake = _OrchestrationConn(
-        existing_user_tables={"APT_BASE", "AWOS"},
-        already_geometric={"APT_BASE"},
-        existing_indexes=set(),
-        update_rowcount=10,
+    """Idempotency: PointGeoms whose column is already registered are skipped."""
+    conn = _RecordingExecConn()
+    apt_geom = geometry.PointGeom("APT_BASE", "geometry", "LONG_DECIMAL", "LAT_DECIMAL")
+    awos_geom = geometry.PointGeom("AWOS", "geometry", "LONG_DECIMAL", "LAT_DECIMAL")
+    populate_calls: list[geometry.PointGeom] = []
+
+    def fake_populate(_c: object, g: geometry.PointGeom) -> int:
+        populate_calls.append(g)
+        return 5
+
+    _patch_geometry_internals(
+        monkeypatch,
+        conn,
+        existing_point_geoms=[apt_geom, awos_geom],
+        already_geometric_keys={("APT_BASE", "geometry")},
     )
-    monkeypatch.setattr(geometry.sqlite3, "connect", lambda _path: fake)
-    monkeypatch.setattr(geometry, "_load_mod_spatialite", lambda _conn: None)
+    monkeypatch.setattr(geometry, "_populate_point_geometry", fake_populate)
     db = tmp_path / "nasr.sqlite"
-    db.write_text("")  # exists()
+    db.write_text("")
 
     geometry.build(db_path=db)
 
-    add_geom_calls = [params for sql, params in fake.executed if "AddGeometryColumn" in sql]
-    create_idx_calls = [params for sql, params in fake.executed if "CreateSpatialIndex" in sql]
-    # Only AWOS (not already geometric) gets AddGeometryColumn.
-    assert add_geom_calls == [("AWOS", "geometry")]
-    # Both AWOS and APT_BASE get CreateSpatialIndex (since neither has an
-    # existing rtree backing table in this scenario).
-    indexed_tables = sorted(t for t, _ in create_idx_calls)
-    assert indexed_tables == ["APT_BASE", "AWOS"]
-    assert fake.committed and fake.closed
+    assert [g.table for g in populate_calls] == ["AWOS"]
+    assert conn.committed and conn.closed
 
 
 def test_build_skips_existing_spatial_indexes(monkeypatch: pytest.MonkeyPatch, tmp_path):
-    """If a table's rtree backing table (idx_<t>_<c>) already exists,
-    CreateSpatialIndex is not re-run for it."""
-    fake = _OrchestrationConn(
-        existing_user_tables={"AWOS"},
-        already_geometric=set(),
-        existing_indexes={"idx_AWOS_geometry"},  # already indexed
-        update_rowcount=5,
+    """A registered geometry whose R-tree backing table already exists doesn't
+    get a CreateSpatialIndex call."""
+    conn = _RecordingExecConn()
+    _patch_geometry_internals(
+        monkeypatch,
+        conn,
+        all_geom_columns=[("AWOS", "geometry")],
+        indexed_columns={("AWOS", "geometry")},
     )
-    monkeypatch.setattr(geometry.sqlite3, "connect", lambda _path: fake)
-    monkeypatch.setattr(geometry, "_load_mod_spatialite", lambda _conn: None)
     db = tmp_path / "nasr.sqlite"
     db.write_text("")
 
     geometry.build(db_path=db)
 
-    create_idx_calls = [params for sql, params in fake.executed if "CreateSpatialIndex" in sql]
-    # No CreateSpatialIndex call -- the existing one wins.
+    create_idx_calls = [params for sql, params in conn.executed if "CreateSpatialIndex" in sql]
     assert create_idx_calls == []
 
 
-def test_build_runs_full_pipeline_for_fresh_db(monkeypatch: pytest.MonkeyPatch, tmp_path):
-    """All tables present, none already geometric, no existing indexes:
-    AddGeometryColumn + UPDATE + CreateSpatialIndex run for each."""
-    tables_present = {"APT_BASE", "AWOS", "FIX_BASE"}
-    fake = _OrchestrationConn(
-        existing_user_tables=tables_present,
-        already_geometric=set(),
-        existing_indexes=set(),
-        update_rowcount=100,
+def test_build_runs_spatial_index_for_unindexed_columns(monkeypatch: pytest.MonkeyPatch, tmp_path):
+    """Pass 4 builds CreateSpatialIndex for every registered column without one."""
+    conn = _RecordingExecConn()
+    _patch_geometry_internals(
+        monkeypatch,
+        conn,
+        all_geom_columns=[("APT_BASE", "geometry"), ("AWOS", "geometry")],
+        indexed_columns=set(),
     )
-    monkeypatch.setattr(geometry.sqlite3, "connect", lambda _path: fake)
-    monkeypatch.setattr(geometry, "_load_mod_spatialite", lambda _conn: None)
     db = tmp_path / "nasr.sqlite"
     db.write_text("")
 
     geometry.build(db_path=db)
 
-    add_geom_tables = sorted(
-        t for sql, (t, _c) in [(s, p) for s, p in fake.executed if "AddGeometryColumn" in s]
+    create_idx_calls = sorted(
+        params for sql, params in conn.executed if "CreateSpatialIndex" in sql
     )
-    update_count = sum(1 for sql, _ in fake.executed if sql.startswith("UPDATE"))
-    create_idx_tables = sorted(
-        t for sql, (t, _c) in [(s, p) for s, p in fake.executed if "CreateSpatialIndex" in s]
-    )
-
-    assert add_geom_tables == sorted(tables_present)
-    assert update_count == len(tables_present)
-    assert create_idx_tables == sorted(tables_present)
+    assert create_idx_calls == [("APT_BASE", "geometry"), ("AWOS", "geometry")]
 
 
 def test_build_initialises_spatial_metadata_when_missing(monkeypatch: pytest.MonkeyPatch, tmp_path):
-    """If geometry_columns doesn't exist yet, build() runs InitSpatialMetadata
-    once before doing anything else."""
-
-    class _UninitConn(_OrchestrationConn):
-        def execute(self, sql: str, params: tuple = ()) -> _OrchestrationCursor:
-            self.executed.append((sql, params))
-            # Override _spatialite_initialized's check: pretend not initialised.
-            if "geometry_columns" in sql and "sqlite_master" in sql:
-                return _OrchestrationCursor.empty()
-            return (
-                super().execute.__wrapped__(self, sql, params)
-                if False
-                else _OrchestrationCursor.empty()
-            )  # type: ignore[no-any-return]
-
-    fake = _UninitConn(
-        existing_user_tables=set(),
-        already_geometric=set(),
-        existing_indexes=set(),
-        update_rowcount=0,
-    )
-    monkeypatch.setattr(geometry.sqlite3, "connect", lambda _path: fake)
-    monkeypatch.setattr(geometry, "_load_mod_spatialite", lambda _conn: None)
+    """If geometry_columns doesn't exist yet, build() runs InitSpatialMetadata."""
+    conn = _RecordingExecConn()
+    _patch_geometry_internals(monkeypatch, conn, spatialite_init=False)
     db = tmp_path / "nasr.sqlite"
     db.write_text("")
 
     geometry.build(db_path=db)
 
-    init_calls = [sql for sql, _ in fake.executed if "InitSpatialMetadata" in sql]
+    init_calls = [sql for sql, _ in conn.executed if "InitSpatialMetadata" in sql]
     assert init_calls == ["SELECT InitSpatialMetadata(1)"]
 
 
 def test_build_does_not_re_init_spatial_metadata(monkeypatch: pytest.MonkeyPatch, tmp_path):
-    """If geometry_columns already exists (the DB was previously initialised),
-    InitSpatialMetadata isn't re-run -- it's an expensive call."""
-    fake = _OrchestrationConn(
-        existing_user_tables=set(),
-        already_geometric=set(),
-        existing_indexes=set(),
-        update_rowcount=0,
-    )
-    monkeypatch.setattr(geometry.sqlite3, "connect", lambda _path: fake)
-    monkeypatch.setattr(geometry, "_load_mod_spatialite", lambda _conn: None)
+    """If geometry_columns already exists, InitSpatialMetadata isn't re-run."""
+    conn = _RecordingExecConn()
+    _patch_geometry_internals(monkeypatch, conn, spatialite_init=True)
     db = tmp_path / "nasr.sqlite"
     db.write_text("")
 
     geometry.build(db_path=db)
 
-    init_calls = [sql for sql, _ in fake.executed if "InitSpatialMetadata" in sql]
-    # Our _OrchestrationConn pretends geometry_columns already exists, so
-    # _spatialite_initialized() returns True and the InitSpatialMetadata call
-    # is skipped.
+    init_calls = [sql for sql, _ in conn.executed if "InitSpatialMetadata" in sql]
     assert init_calls == []
+
+
+def test_build_populates_joined_point_geoms(monkeypatch: pytest.MonkeyPatch, tmp_path):
+    """Pass 2 calls _populate_joined_point_geometry for each existing
+    JoinedPointGeom that's not already registered."""
+    conn = _RecordingExecConn()
+    atc_jg = geometry.JoinedPointGeom(
+        "ATC_BASE", "geometry", "APT_BASE", "geometry", "SITE_NO", "SITE_NO"
+    )
+    populate_calls: list[geometry.JoinedPointGeom] = []
+
+    def fake_populate(_c: object, jg: geometry.JoinedPointGeom) -> int:
+        populate_calls.append(jg)
+        return 7
+
+    _patch_geometry_internals(
+        monkeypatch,
+        conn,
+        existing_joined_geoms=[atc_jg],
+    )
+    monkeypatch.setattr(geometry, "_populate_joined_point_geometry", fake_populate)
+    db = tmp_path / "nasr.sqlite"
+    db.write_text("")
+
+    geometry.build(db_path=db)
+
+    assert populate_calls == [atc_jg]
+
+
+def test_build_runs_runway_lines_when_apt_rwy_tables_present(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+):
+    """Pass 3 fires _populate_runway_lines only when both APT_RWY and
+    APT_RWY_END tables exist."""
+    conn = _RecordingExecConn()
+    runway_calls: list[str] = []
+
+    _patch_geometry_internals(monkeypatch, conn, apt_rwy_present=True)
+
+    def fake_runway(_c: object, col: str) -> int:
+        runway_calls.append(col)
+        return 100
+
+    monkeypatch.setattr(geometry, "_populate_runway_lines", fake_runway)
+    db = tmp_path / "nasr.sqlite"
+    db.write_text("")
+
+    geometry.build(db_path=db)
+
+    assert runway_calls == [geometry._RUNWAY_LINE_GEOM.geom_column]
+
+
+def test_build_skips_runway_lines_when_apt_rwy_missing(monkeypatch: pytest.MonkeyPatch, tmp_path):
+    conn = _RecordingExecConn()
+    runway_calls: list[str] = []
+
+    _patch_geometry_internals(monkeypatch, conn, apt_rwy_present=False)
+
+    def fake_runway(_c: object, col: str) -> int:
+        runway_calls.append(col)
+        return 0
+
+    monkeypatch.setattr(geometry, "_populate_runway_lines", fake_runway)
+    db = tmp_path / "nasr.sqlite"
+    db.write_text("")
+
+    geometry.build(db_path=db)
+
+    assert runway_calls == []

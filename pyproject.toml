@@ -50,6 +50,11 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[tool.typos.default.extend-words]
+# FAA aviation terminology that typos misidentifies as misspellings.
+THR = "THR"  # "threshold" abbreviation in FAA columns like LAT_DISPLACED_THR_DECIMAL
+VOR = "VOR"  # navaid type (VHF Omnidirectional Range)
+
 [tool.mypy]
 python_version = "3.12"
 

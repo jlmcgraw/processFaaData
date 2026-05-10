@@ -12,6 +12,7 @@ from collections.abc import Iterator
 
 import pytest
 
+from faa_nasr import geometry
 from faa_nasr.geometry import (
     PointGeom,
     _already_geometric,
@@ -157,6 +158,48 @@ def test_has_spatial_index_does_not_match_other_tables(conn):
     conn.execute("CREATE TABLE idx_NAV_BASE_geometry (id INTEGER)")
     g = PointGeom("APT_BASE", "geometry", "LON", "LAT")
     assert _has_spatial_index(conn, g) is False
+
+
+# ---------------------------------------------------------------------------
+# _existing_joined_geoms / _joined_geom_already_present / _all_geom_columns
+# ---------------------------------------------------------------------------
+
+
+def test_existing_joined_geoms_filters_to_present_tables_pair(conn):
+    conn.execute("CREATE TABLE ATC_BASE (a TEXT)")
+    conn.execute("CREATE TABLE APT_BASE (b TEXT)")
+    geoms = [
+        geometry.JoinedPointGeom("ATC_BASE", "geometry", "APT_BASE", "geometry", "x", "y"),
+        # Both tables must exist; this one doesn't.
+        geometry.JoinedPointGeom("MISSING", "geometry", "APT_BASE", "geometry", "x", "y"),
+    ]
+    result = geometry._existing_joined_geoms(geoms, conn)
+    assert [g.table for g in result] == ["ATC_BASE"]
+
+
+def test_joined_geom_already_present_delegates_to_column_lookup(conn):
+    _stub_geometry_columns(conn)
+    conn.execute("INSERT INTO geometry_columns VALUES (?, ?)", ("ATC_BASE", "geometry"))
+    jg = geometry.JoinedPointGeom("ATC_BASE", "geometry", "APT_BASE", "geometry", "x", "y")
+    assert geometry._joined_geom_already_present(conn, jg) is True
+
+
+def test_all_geom_columns_lists_every_registered_pair(conn):
+    _stub_geometry_columns(conn)
+    conn.execute("INSERT INTO geometry_columns VALUES (?, ?)", ("APT_BASE", "geometry"))
+    conn.execute("INSERT INTO geometry_columns VALUES (?, ?)", ("AWOS", "geometry"))
+    result = geometry._all_geom_columns(conn)
+    assert sorted(result) == [("APT_BASE", "geometry"), ("AWOS", "geometry")]
+
+
+def test_all_geom_columns_empty_when_no_columns_registered(conn):
+    _stub_geometry_columns(conn)
+    assert geometry._all_geom_columns(conn) == []
+
+
+# ---------------------------------------------------------------------------
+# (continued) _has_spatial_index
+# ---------------------------------------------------------------------------
 
 
 def test_has_spatial_index_does_not_match_partial_name(conn):
