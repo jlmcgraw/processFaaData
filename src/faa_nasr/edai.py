@@ -1,13 +1,15 @@
 """Download FAA EDAI shapefile datasets and build a SpatiaLite database.
 
 EDAI (Enterprise Data) is the FAA's ArcGIS Hub open-data feed -- a parallel
-publication of NASR-equivalent data as shapefiles, plus a few datasets that
-aren't in the NASR subscription (TFRs, Stadiums, Pending changes, etc.).
+publication of NASR-equivalent data as shapefiles, plus datasets that aren't
+in the NASR subscription (TFRs, Stadiums, VFR/IFR chart layers, Airport
+Mapping layers, etc.).
 
-The dataset list and naming convention mirror jlmcgraw/edai_data's
-`freshen_edai_data.sh` so consumers see the same layer set. The download URL
-format is the current one (https://hub.arcgis.com/api/v3/datasets/...) --
-the script's old `ais.faa.opendata.arcgis.com` host is gone.
+The dataset list is fetched dynamically from the FAA's DCAT catalog at
+runtime so we always have the current set without hardcoded GUIDs going
+stale. (The original jlmcgraw/edai_data script's host is gone, and its
+21-dataset hardcoded list is now incomplete -- the current catalog has
+~50 effective shapefile datasets plus draft "Pending" variants.)
 """
 
 from __future__ import annotations
@@ -25,35 +27,29 @@ from faa_nasr import _log
 from faa_nasr.airspace import _copy_shapefile, _init_spatialite_db, _safe_name
 
 EDAI_BASE_URL = "https://hub.arcgis.com/api/v3/datasets"
+# DCAT-US 1.1 catalog of every dataset published on the FAA Hub.
+EDAI_CATALOG_URL = "https://adds-faa.opendata.arcgis.com/api/feed/dcat-us/1.1.json"
 # NAD83 -- the FAA's published reference system for these datasets.
 EDAI_SPATIAL_REF_ID = 4269
 EDAI_OUTPUT_DB = "edai_spatialite.sqlite"
 
-# {GUID: human-readable description}. GUIDs are stable item IDs in ArcGIS
-# Hub; original list comes from jlmcgraw/edai_data's freshen_edai_data.sh.
-EDAI_DATASETS: dict[str, str] = {
-    "4d8fa46181aa470d809776c57a8ab1f6_0": "Runways",
-    "0c6899de28af447c801231ed7ba7baa6_0": "MTR_Segment",
-    "d5c81ec19e0d43748d5bb0a1e36b6341_0": "Changeover_Point",
-    "f02750503edb4a69875cb1f744219370_0": "Route_Portion",
-    "c6a62360338e408cb1512366ad61559e_0": "Class_Airspace",
-    "8bf861bb9b414f4ea9f0ff2ca0f1a851_0": "Route_Airspace",
-    "3f42ed70dba34ef09a3c03c68ea78d80_0": "Frequency",
-    "c9254c171b6741d3a5e494860761443a_0": "NAVAID_Component",
-    "3a379be9c3504403907ef6cabd20ea34_0": "ILS_Component",
-    "990e238991b44dd08af27d7b43e70b92_0": "NAVAID_System",
-    "9dcdee16e66b47d59c17f4dae53f6721_0": "ILS",
-    "861043a88ff4486c97c3789e7dcdccc6_0": "Designated_Point",
-    "ba57404f70184b858d2c929f99f7b40c_0": "Holding_Pattern",
-    "6e89f7409c2f486894f5393859232cc9_0": "Services",
-    "8458b1e305ff47ee9e4b840b63990da2_0": "Radial_Bearing",
-    "e747ab91a11045e8b3f8a3efd093d3b5_0": "Airports",
-    "67885972e4e940b2aa6d74024901c561_0": "Airspace_Boundary",
-    "826bda9e0b324006a2da8f20ff334190_0": "EnRoute_Information",
-    "5344a67700d543b582874b2da9c20559_0": "Notes",
-    "dd0d1b726e504137ab3c41b21835d05b_0": "Special_Use_Airspace",
-    "acf64966af5f48a1a40fdbcb31238ba7_0": "ATS_Route",
-}
+
+@dataclass(frozen=True)
+class EdaiDatasetMeta:
+    """One dataset entry from the FAA's DCAT catalog.
+
+    `hub_id` (the `<guid>_<sublayer>` form used in download URLs) is the
+    only identifier the Hub V3 API accepts.
+    """
+
+    guid: str
+    sublayer: int
+    title: str
+    is_pending: bool
+
+    @property
+    def hub_id(self) -> str:
+        return f"{self.guid}_{self.sublayer}"
 
 
 @dataclass(frozen=True)
@@ -62,12 +58,30 @@ class EdaiFetchResult:
     extract_dir: Path  # extracted shapefiles, one subdir per dataset
 
 
-def fetch(out_dir: Path) -> EdaiFetchResult:
+def fetch_catalog(client: httpx.Client | None = None) -> list[EdaiDatasetMeta]:
+    """Fetch the FAA DCAT catalog and return one EdaiDatasetMeta per dataset
+    that offers a shapefile (ZIP) download. Strips out raster/web-only
+    datasets (VFR Sectional, ADDS-readme, etc.) and other non-spatial entries.
+    """
+    if client is None:
+        with httpx.Client(timeout=30.0, follow_redirects=True) as c:
+            resp = c.get(EDAI_CATALOG_URL)
+            resp.raise_for_status()
+            payload = resp.json()
+    else:
+        resp = client.get(EDAI_CATALOG_URL)
+        resp.raise_for_status()
+        payload = resp.json()
+    return [m for m in _parse_catalog(payload) if m is not None]
+
+
+def fetch(out_dir: Path, include_pending: bool = False) -> EdaiFetchResult:
     """Download every EDAI dataset zip with timestamp-based caching, then
     extract each into its own subdirectory of `extract_dir`.
 
-    The HTTP cache uses `If-Modified-Since` against each file's mtime, so
-    re-running this is cheap when nothing has changed upstream.
+    Pulls the dataset list dynamically from the FAA DCAT catalog. Pass
+    `include_pending=True` to also fetch the draft "Pending" variants
+    (upcoming-cycle preview data).
     """
     download_dir = (out_dir / "edai_downloads").resolve()
     extract_dir = (out_dir / "edai_extracted").resolve()
@@ -77,21 +91,26 @@ def fetch(out_dir: Path) -> EdaiFetchResult:
     _log.step(f"fetch-edai -> {download_dir}")
     failures: list[tuple[str, str]] = []
     with httpx.Client(timeout=120.0, follow_redirects=True) as client:
+        catalog = fetch_catalog(client)
+        if not include_pending:
+            catalog = [d for d in catalog if not d.is_pending]
+        _log.info(f"  {len(catalog)} dataset(s) from catalog")
+
         bar = tqdm(
-            EDAI_DATASETS.items(),
+            catalog,
             desc="  EDAI",
             unit="file",
             disable=_log.is_quiet(),
             leave=True,
         )
-        for guid, description in bar:
-            bar.set_postfix_str(description, refresh=False)
+        for meta in bar:
+            bar.set_postfix_str(meta.title, refresh=False)
             try:
-                _fetch_one(client, guid, download_dir / f"{description}.zip")
+                _fetch_one(client, meta.hub_id, download_dir / f"{_safe_name(meta.title)}.zip")
             except httpx.HTTPStatusError as exc:
                 # ArcGIS Hub occasionally 500s on individual datasets; log
                 # and keep going so one bad dataset doesn't block the rest.
-                failures.append((description, str(exc.response.status_code)))
+                failures.append((meta.title, str(exc.response.status_code)))
     if failures:
         _log.info(
             f"  {len(failures)} dataset(s) failed: "
@@ -100,6 +119,51 @@ def fetch(out_dir: Path) -> EdaiFetchResult:
 
     _extract_all(download_dir, extract_dir)
     return EdaiFetchResult(download_dir=download_dir, extract_dir=extract_dir)
+
+
+def _parse_catalog(payload: dict) -> list[EdaiDatasetMeta]:
+    """Turn the DCAT JSON into EdaiDatasetMeta entries.
+
+    Each entry's `identifier` looks like
+    `https://www.arcgis.com/home/item.html?id=<GUID>[&sublayer=N]`. We split
+    out the GUID + sublayer, default sublayer to 0 when absent. Datasets
+    without a ZIP distribution (rasters, web pages, the README) are dropped.
+    """
+    out: list[EdaiDatasetMeta] = []
+    for d in payload.get("dataset", []):
+        title = (d.get("title") or "").strip()
+        ident = d.get("identifier", "")
+        if not title or "id=" not in ident:
+            continue
+        # Skip datasets with no shapefile (ZIP) distribution.
+        formats = {x.get("format", "") for x in d.get("distribution", [])}
+        if "ZIP" not in formats:
+            continue
+
+        rest = ident.split("id=", 1)[1]
+        parts = rest.split("&")
+        guid = parts[0]
+        sublayer = 0
+        for p in parts[1:]:
+            if p.startswith("sublayer="):
+                try:
+                    sublayer = int(p.split("=", 1)[1])
+                except ValueError:
+                    sublayer = 0
+                break
+
+        out.append(
+            EdaiDatasetMeta(
+                guid=guid,
+                sublayer=sublayer,
+                title=title,
+                # FAA uses "Pending X" (prefix) for most draft datasets but
+                # "XPending" (suffix) for a handful (RoutePortionPending,
+                # FrequencyPending, EnrouteInformationPending).
+                is_pending="pending" in title.lower(),
+            )
+        )
+    return out
 
 
 def build(out_dir: Path, extract_dir: Path) -> None:

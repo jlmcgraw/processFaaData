@@ -72,22 +72,32 @@ def build_airspace_cmd(
 @app.command("fetch-edai")
 def fetch_edai_cmd(
     out_dir: Path = typer.Option(Path("./local_data"), "--out", "-o"),
+    include_pending: bool = typer.Option(
+        False, "--include-pending", help="Also fetch draft 'Pending' datasets."
+    ),
 ) -> None:
-    """Download FAA EDAI shapefile datasets from ArcGIS Hub (timestamp-cached)."""
+    """Download FAA EDAI shapefile datasets from ArcGIS Hub (timestamp-cached).
+
+    Dataset list is fetched dynamically from the FAA's DCAT catalog -- we
+    always pick up the current set instead of relying on a hardcoded GUID list.
+    """
     from faa_nasr import edai
 
-    edai.fetch(out_dir=out_dir)
+    edai.fetch(out_dir=out_dir, include_pending=include_pending)
 
 
 @app.command("build-edai")
 def build_edai_cmd(
     out_dir: Path = typer.Option(Path("."), "--out", "-o"),
     work_dir: Path = typer.Option(Path("./local_data"), "--work-dir"),
+    include_pending: bool = typer.Option(
+        False, "--include-pending", help="Also include draft 'Pending' datasets."
+    ),
 ) -> None:
     """Fetch EDAI shapefile datasets and build edai_spatialite.sqlite."""
     from faa_nasr import edai
 
-    fetched = edai.fetch(out_dir=work_dir)
+    fetched = edai.fetch(out_dir=work_dir, include_pending=include_pending)
     edai.build(out_dir=out_dir, extract_dir=fetched.extract_dir)
 
 

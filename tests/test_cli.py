@@ -205,7 +205,7 @@ def test_build_airspace_passes_args(monkeypatch: pytest.MonkeyPatch):
 def test_fetch_edai_passes_out_dir(monkeypatch: pytest.MonkeyPatch):
     captured: dict[str, Any] = {}
 
-    def fake_fetch(out_dir: Path) -> edai.EdaiFetchResult:
+    def fake_fetch(out_dir: Path, include_pending: bool = False) -> edai.EdaiFetchResult:
         captured["out_dir"] = out_dir
         return edai.EdaiFetchResult(
             download_dir=out_dir / "edai_downloads",
@@ -224,7 +224,7 @@ def test_build_edai_chains_fetch_then_build(monkeypatch: pytest.MonkeyPatch, tmp
     captured: dict[str, Any] = {}
     fetched = edai.EdaiFetchResult(download_dir=tmp_path / "dl", extract_dir=tmp_path / "ex")
 
-    def fake_fetch(out_dir: Path) -> edai.EdaiFetchResult:
+    def fake_fetch(out_dir: Path, include_pending: bool = False) -> edai.EdaiFetchResult:
         captured["fetch_out_dir"] = out_dir
         return fetched
 

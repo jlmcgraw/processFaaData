@@ -28,15 +28,24 @@ def _as_client(c: object) -> httpx.Client:
 
 class _FakeResponse:
     def __init__(
-        self, *, status_code: int = 200, body: bytes = b"", headers: dict[str, str] | None = None
+        self,
+        *,
+        status_code: int = 200,
+        body: bytes = b"",
+        headers: dict[str, str] | None = None,
+        json_payload: Any = None,
     ):
         self.status_code = status_code
         self._body = body
         self.headers = headers or {}
+        self._json = json_payload
 
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
             raise RuntimeError(f"HTTP {self.status_code}")
+
+    def json(self) -> Any:
+        return self._json
 
     def iter_bytes(self) -> Any:
         yield self._body
@@ -53,10 +62,13 @@ class _FakeClient:
 
     `stream_responses` maps URLs (without query string) to a list of
     responses, popped in order. `requests` records (url, params, headers)
-    tuples for assertion."""
+    tuples for assertion. `get_responses` is consulted by `.get()` for
+    catalog fetches.
+    """
 
     def __init__(self) -> None:
         self.stream_responses: dict[str, list[_FakeResponse]] = {}
+        self.get_responses: dict[str, _FakeResponse] = {}
         self.requests: list[tuple[str, dict[str, Any], dict[str, str]]] = []
 
     def stream(
@@ -70,6 +82,10 @@ class _FakeClient:
         responses = self.stream_responses.get(url)
         assert responses, f"No response queued for {url}"
         return responses.pop(0)
+
+    def get(self, url: str, **kwargs: Any) -> _FakeResponse:
+        self.requests.append((url, {}, {}))
+        return self.get_responses[url]
 
     def __enter__(self) -> _FakeClient:
         return self
@@ -197,14 +213,45 @@ def test_extract_all_skips_non_zip_files(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_fetch_downloads_each_dataset_then_extracts(monkeypatch: pytest.MonkeyPatch, tmp_path):
+# A minimal DCAT catalog payload for orchestration tests -- two effective
+# datasets and one Pending one, plus a non-shapefile entry that should be
+# filtered out.
+def _catalog_payload(*titles_with_id_and_pending: tuple[str, str, bool]) -> dict[str, Any]:
+    """Build a fake DCAT-US payload from (title, guid, is_pending) tuples.
+    All entries get a ZIP distribution so they survive the catalog filter.
+    """
+    return {
+        "dataset": [
+            {
+                "title": title,
+                "identifier": f"https://www.arcgis.com/home/item.html?id={guid}&sublayer=0",
+                "distribution": [
+                    {"format": "ZIP"},
+                    {"format": "Web Page"},
+                ],
+            }
+            for title, guid, _pending in titles_with_id_and_pending
+        ]
+    }
+
+
+def test_fetch_uses_dynamic_catalog(monkeypatch: pytest.MonkeyPatch, tmp_path):
+    """Fetches the DCAT catalog at runtime, then downloads each non-Pending
+    dataset it advertises with a ZIP distribution."""
+    catalog_entries = [
+        ("Airports", "airports-guid", False),
+        ("Runways", "runways-guid", False),
+        ("Pending Airports", "pending-airports-guid", True),
+    ]
     fake = _FakeClient()
-    # Queue a body for every dataset GUID so all 21 fetches succeed.
-    for guid in edai.EDAI_DATASETS:
+    fake.get_responses[edai.EDAI_CATALOG_URL] = _FakeResponse(
+        json_payload=_catalog_payload(*catalog_entries)
+    )
+    for _title, guid, _ in catalog_entries:
         zip_buf = io.BytesIO()
         with zipfile.ZipFile(zip_buf, "w") as zf:
-            zf.writestr(f"{edai.EDAI_DATASETS[guid]}.shp", b"FAKE")
-        fake.stream_responses[f"{edai.EDAI_BASE_URL}/{guid}/downloads/data"] = [
+            zf.writestr(f"{guid}.shp", b"FAKE")
+        fake.stream_responses[f"{edai.EDAI_BASE_URL}/{guid}_0/downloads/data"] = [
             _FakeResponse(body=zip_buf.getvalue())
         ]
 
@@ -216,12 +263,246 @@ def test_fetch_downloads_each_dataset_then_extracts(monkeypatch: pytest.MonkeyPa
     result = edai.fetch(out_dir=tmp_path)
 
     assert isinstance(result, edai.EdaiFetchResult)
-    # All 21 datasets requested.
-    requested_urls = [u for u, _, _ in fake.requests]
-    assert len(requested_urls) == len(edai.EDAI_DATASETS)
-    # Each landed on disk as <description>.zip.
-    for description in edai.EDAI_DATASETS.values():
-        assert (result.download_dir / f"{description}.zip").exists()
+    # Pending dataset was filtered out; only the two effective ones downloaded.
+    download_urls = [u for u, _, _ in fake.requests if "downloads/data" in u]
+    assert len(download_urls) == 2
+    assert (result.download_dir / "Airports.zip").exists()
+    assert (result.download_dir / "Runways.zip").exists()
+    assert not (result.download_dir / "Pending_Airports.zip").exists()
+
+
+def test_fetch_include_pending_downloads_drafts(monkeypatch: pytest.MonkeyPatch, tmp_path):
+    """With include_pending=True, the Pending datasets are also downloaded."""
+    catalog_entries = [
+        ("Airports", "airports-guid", False),
+        ("Pending Airports", "pending-airports-guid", True),
+    ]
+    fake = _FakeClient()
+    fake.get_responses[edai.EDAI_CATALOG_URL] = _FakeResponse(
+        json_payload=_catalog_payload(*catalog_entries)
+    )
+    for _, guid, _ in catalog_entries:
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w") as zf:
+            zf.writestr(f"{guid}.shp", b"FAKE")
+        fake.stream_responses[f"{edai.EDAI_BASE_URL}/{guid}_0/downloads/data"] = [
+            _FakeResponse(body=zip_buf.getvalue())
+        ]
+
+    class _Module:
+        Client = lambda *a, **kw: fake  # noqa: E731
+
+    monkeypatch.setattr(edai, "httpx", _Module)
+
+    edai.fetch(out_dir=tmp_path, include_pending=True)
+
+    download_urls = [u for u, _, _ in fake.requests if "downloads/data" in u]
+    assert len(download_urls) == 2  # both effective AND pending
+
+
+# ---------------------------------------------------------------------------
+# fetch_catalog / _parse_catalog
+# ---------------------------------------------------------------------------
+
+
+def test_parse_catalog_extracts_guid_and_sublayer():
+    payload = {
+        "dataset": [
+            {
+                "title": "Airports",
+                "identifier": "https://www.arcgis.com/home/item.html?id=abc123&sublayer=0",
+                "distribution": [{"format": "ZIP"}],
+            },
+            {
+                "title": "VFR Terminal",
+                # No sublayer -- defaults to 0.
+                "identifier": "https://www.arcgis.com/home/item.html?id=def456",
+                "distribution": [{"format": "ZIP"}],
+            },
+        ]
+    }
+    result = edai._parse_catalog(payload)
+    assert [(r.title, r.guid, r.sublayer, r.hub_id) for r in result] == [
+        ("Airports", "abc123", 0, "abc123_0"),
+        ("VFR Terminal", "def456", 0, "def456_0"),
+    ]
+
+
+def test_parse_catalog_skips_non_shapefile_datasets():
+    """VFR Sectional, ADDS-readme, etc. don't have a ZIP distribution and
+    must be filtered out -- pyogrio can't read rasters or HTML."""
+    payload = {
+        "dataset": [
+            {
+                "title": "Has Shapefile",
+                "identifier": "https://example/?id=a&sublayer=0",
+                "distribution": [{"format": "ZIP"}],
+            },
+            {
+                "title": "VFR Sectional",
+                "identifier": "https://example/?id=b&sublayer=0",
+                "distribution": [{"format": "Web Page"}],  # raster only
+            },
+            {
+                "title": "ADDS-readme",
+                "identifier": "https://example/?id=c",
+                "distribution": [{"format": "Web Page"}],
+            },
+        ]
+    }
+    titles = [r.title for r in edai._parse_catalog(payload)]
+    assert titles == ["Has Shapefile"]
+
+
+def test_parse_catalog_marks_pending_datasets():
+    """FAA uses both "Pending X" (prefix) and "XPending" (suffix) styles --
+    is_pending must catch both."""
+    payload = {
+        "dataset": [
+            {
+                "title": "Pending Airports",  # prefix form
+                "identifier": "https://example/?id=a",
+                "distribution": [{"format": "ZIP"}],
+            },
+            {
+                "title": "RoutePortionPending",  # suffix form
+                "identifier": "https://example/?id=b",
+                "distribution": [{"format": "ZIP"}],
+            },
+            {
+                "title": "Airports",  # not pending
+                "identifier": "https://example/?id=c",
+                "distribution": [{"format": "ZIP"}],
+            },
+        ]
+    }
+    by_title = {r.title: r for r in edai._parse_catalog(payload)}
+    assert by_title["Pending Airports"].is_pending is True
+    assert by_title["RoutePortionPending"].is_pending is True
+    assert by_title["Airports"].is_pending is False
+
+
+def test_parse_catalog_skips_entries_missing_title_or_id():
+    payload = {
+        "dataset": [
+            {
+                "title": "",  # missing title
+                "identifier": "https://example/?id=a",
+                "distribution": [{"format": "ZIP"}],
+            },
+            {
+                "title": "No ID",
+                "identifier": "https://example/no-id-here",
+                "distribution": [{"format": "ZIP"}],
+            },
+            {
+                "title": "Good",
+                "identifier": "https://example/?id=z",
+                "distribution": [{"format": "ZIP"}],
+            },
+        ]
+    }
+    titles = [r.title for r in edai._parse_catalog(payload)]
+    assert titles == ["Good"]
+
+
+def test_parse_catalog_handles_invalid_sublayer_gracefully():
+    payload = {
+        "dataset": [
+            {
+                "title": "X",
+                "identifier": "https://example/?id=g&sublayer=not-an-int",
+                "distribution": [{"format": "ZIP"}],
+            }
+        ]
+    }
+    result = edai._parse_catalog(payload)
+    assert result[0].sublayer == 0
+
+
+def test_fetch_catalog_uses_provided_client():
+    """When passed a client, fetch_catalog reuses it instead of opening a new one."""
+    fake = _FakeClient()
+    fake.get_responses[edai.EDAI_CATALOG_URL] = _FakeResponse(
+        json_payload={
+            "dataset": [
+                {
+                    "title": "Foo",
+                    "identifier": "https://example/?id=foo",
+                    "distribution": [{"format": "ZIP"}],
+                }
+            ]
+        }
+    )
+    result = edai.fetch_catalog(_as_client(fake))
+    assert [r.title for r in result] == ["Foo"]
+
+
+def test_fetch_catalog_opens_its_own_client_when_none_provided(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """No client passed -> fetch_catalog opens one via httpx.Client()."""
+    fake = _FakeClient()
+    fake.get_responses[edai.EDAI_CATALOG_URL] = _FakeResponse(
+        json_payload={
+            "dataset": [
+                {
+                    "title": "Bar",
+                    "identifier": "https://example/?id=bar",
+                    "distribution": [{"format": "ZIP"}],
+                }
+            ]
+        }
+    )
+
+    class _Module:
+        Client = lambda *a, **kw: fake  # noqa: E731
+
+    monkeypatch.setattr(edai, "httpx", _Module)
+
+    result = edai.fetch_catalog()
+    assert [r.title for r in result] == ["Bar"]
+
+
+def test_fetch_continues_when_individual_dataset_500s(monkeypatch: pytest.MonkeyPatch, tmp_path):
+    """One bad dataset shouldn't block the rest -- the failure is logged and
+    fetch keeps going. (Regression for the real-world Frequency 500.)"""
+    catalog_entries = [
+        ("Good", "good-guid", False),
+        ("Bad", "bad-guid", False),
+    ]
+    fake = _FakeClient()
+    fake.get_responses[edai.EDAI_CATALOG_URL] = _FakeResponse(
+        json_payload=_catalog_payload(*catalog_entries)
+    )
+    # "Good" succeeds, "Bad" returns 500.
+    good_zip = io.BytesIO()
+    with zipfile.ZipFile(good_zip, "w") as zf:
+        zf.writestr("good.shp", b"FAKE")
+    fake.stream_responses[f"{edai.EDAI_BASE_URL}/good-guid_0/downloads/data"] = [
+        _FakeResponse(body=good_zip.getvalue())
+    ]
+
+    # Make the bad URL raise httpx.HTTPStatusError when raise_for_status() is called.
+    class _ErrResp(_FakeResponse):
+        def raise_for_status(self) -> None:
+            req = httpx.Request("GET", "https://example/")
+            resp = httpx.Response(500, request=req)
+            raise httpx.HTTPStatusError("500", request=req, response=resp)
+
+    fake.stream_responses[f"{edai.EDAI_BASE_URL}/bad-guid_0/downloads/data"] = [_ErrResp()]
+
+    class _Module:
+        Client = lambda *a, **kw: fake  # noqa: E731
+        HTTPStatusError = httpx.HTTPStatusError
+
+    monkeypatch.setattr(edai, "httpx", _Module)
+
+    result = edai.fetch(out_dir=tmp_path)
+
+    # Good dataset extracted; bad one logged and skipped without crashing.
+    assert (result.download_dir / "Good.zip").exists()
+    assert not (result.download_dir / "Bad.zip").exists()
 
 
 # ---------------------------------------------------------------------------
