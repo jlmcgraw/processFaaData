@@ -74,8 +74,16 @@ _POINT_GEOMS: tuple[PointGeom, ...] = (
         "LONG_DISPLACED_THR_DECIMAL",
         "LAT_DISPLACED_THR_DECIMAL",
     ),
-    # ARTCC reference point.
+    PointGeom(
+        # Land And Hold Short Operations point on a runway end (when present).
+        "APT_RWY_END",
+        "lahso_geometry",
+        "LONG_LAHSO_DECIMAL",
+        "LAT_LAHSO_DECIMAL",
+    ),
+    # ARTCC reference point + per-segment boundary vertices.
     PointGeom("ARB_BASE", "geometry", "LONG_DECIMAL", "LAT_DECIMAL"),
+    PointGeom("ARB_SEG", "geometry", "LONG_DECIMAL", "LAT_DECIMAL"),
     # Weather + comm + AWOS facilities.
     PointGeom("AWOS", "geometry", "LONG_DECIMAL", "LAT_DECIMAL"),
     PointGeom("COM", "geometry", "LONG_DECIMAL", "LAT_DECIMAL"),
