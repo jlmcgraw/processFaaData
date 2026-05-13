@@ -34,7 +34,10 @@ CLI subcommands (see `nasr <cmd> --help`):
 - `build-tables <csv-dir>` — load every `*.csv` (skipping `*_CSV_DATA_STRUCTURE.csv`) into a fresh SQLite DB.
 - `build-spatial <db>` — add SpatiaLite geometry + spatial indexes to an existing NASR DB in place. Idempotent.
 - `build-airspace <nasr-dir>` — convert the class-airspace shapefile and SAA AIXM XML.
-- `build` — end-to-end (fetch → tables → spatial → airspace).
+- `fetch-edai` / `build-edai` — download FAA EDAI shapefile datasets and build `edai_spatialite.sqlite`.
+- `fetch-weather` — pull current METAR / TAF / PIREP / AIRMET-SIGMET / international-SIGMET into `weather.sqlite`. Realtime, not cycle-bound.
+- `fetch-tfrs` — pull active TFR polygons (WFS) + metadata (JSON list API) into `tfrs.sqlite`.
+- `build` — end-to-end (fetch → tables → spatial → airspace → edai). Does **not** include `fetch-weather` / `fetch-tfrs`, which are realtime feeds run on their own cadence.
 
 ## Architecture
 
@@ -47,6 +50,8 @@ writes outputs out, and has no shared state.
 - `geometry.py` — opens the SQLite DB *in place*, calls `enable_load_extension(True)`, tries multiple paths for `mod_spatialite` (Debian multi-arch first, then Homebrew), then applies a static table-to-geometry mapping (`_POINT_GEOMS`) to add `geometry POINT/4326` columns + spatial indexes for the tables that have `LAT_DECIMAL`/`LONG_DECIMAL` (or `LATDEC`/`LONDEC` for OBSTACLE). Idempotent: skips tables that already have a registered geometry column. Two-pass: populate all geometries first, then build R-tree indexes (avoids per-row trigger cost during the bulk UPDATE).
 - `airspace.py` — uses `pyogrio.raw.read`/`write` (low-level numpy API; no geopandas dep) to copy each shapefile/AIXM layer into a SpatiaLite DB. Forces `MultiPolygon Z` (etc.) + `promote_to_multi=True` because the class-airspace shapefile mixes single and multi geometries in one layer. The SAA file is a zip-of-zips (outer `SaaSubscriberFile.zip` contains the AIXM schema bundle plus an inner `Saa_Sub_File.zip` with the per-airspace XML feature files), so `_extract_recursive` is used.
 - `coords.py` — DMS↔decimal helpers. Rarely needed because the CSV subscription already provides decimal columns; kept as a fallback.
+- `weather.py` — fetches the 5 aviationweather.gov GeoJSON feeds (`/api/data/metar`, `/taf`, `/pirep`, `/airsigmet`, `/isigmet`), caches each to `weather_cache/<layer>.geojson`, then writes one SpatiaLite layer per feed in `weather.sqlite`. METAR/TAF/PIREP require a bbox or station list -- a global bbox (`15,-180,75,-60`) is hardcoded; airsigmet/isigmet accept it harmlessly. Port of the jlmcgraw/aviationMapMetarSigmetsAndTFRs Perl scraper (the original repo's ADDS URLs are retired).
+- `tfr.py` — fetches active TFR polygons from `tfr.faa.gov/geoserver/TFR/ows` (WFS, `TFR:V_TFR_LOC`, GeoJSON in EPSG:4326), enriches each feature with metadata from `tfrapi/getTfrList` joined on the leading `notam_id` segment of `NOTAM_KEY`, then writes a `tfrs` POLYGON layer + an attribute-only `tfrs_no_shape` table (TFRs whose polygon hasn't been published yet, from `tfrapi/noShapeTfrList`). The enrichment dedupes case-insensitively because SQLite identifiers are case-insensitive (WFS `STATE` vs list-API `state`).
 
 To add support for a new NASR CSV (the FAA occasionally publishes new subjects):
 nothing to do — `tables.py` discovers files by glob and creates tables from

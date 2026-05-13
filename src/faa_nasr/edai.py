@@ -29,8 +29,11 @@ from faa_nasr.airspace import _copy_shapefile, _init_spatialite_db, _safe_name
 EDAI_BASE_URL = "https://hub.arcgis.com/api/v3/datasets"
 # DCAT-US 1.1 catalog of every dataset published on the FAA Hub.
 EDAI_CATALOG_URL = "https://adds-faa.opendata.arcgis.com/api/feed/dcat-us/1.1.json"
-# NAD83 -- the FAA's published reference system for these datasets.
-EDAI_SPATIAL_REF_ID = 4269
+# WGS84. The Hub requires spatialRefId; the Airport Mapping ("AM ...")
+# datasets only publish in 4326, while every other EDAI dataset is happy
+# to serve either 4269 or 4326 -- so 4326 is the one value that works
+# across the whole catalog.
+EDAI_SPATIAL_REF_ID = 4326
 EDAI_OUTPUT_DB = "edai_spatialite.sqlite"
 
 

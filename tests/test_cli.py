@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from faa_nasr import _log, airspace, edai, fetch, geometry, tables
+from faa_nasr import _log, airspace, edai, fetch, geometry, tables, tfr, weather
 from faa_nasr.cli import app
 
 runner = CliRunner()
@@ -32,7 +32,15 @@ def reset_quiet() -> None:
 def test_root_help_lists_all_commands():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    for cmd in ("fetch", "build-tables", "build-spatial", "build-airspace", "build"):
+    for cmd in (
+        "fetch",
+        "build-tables",
+        "build-spatial",
+        "build-airspace",
+        "fetch-weather",
+        "fetch-tfrs",
+        "build",
+    ):
         assert cmd in result.stdout
 
 
@@ -45,7 +53,16 @@ def test_root_no_args_shows_help():
 
 
 @pytest.mark.parametrize(
-    "cmd", ["fetch", "build-tables", "build-spatial", "build-airspace", "build"]
+    "cmd",
+    [
+        "fetch",
+        "build-tables",
+        "build-spatial",
+        "build-airspace",
+        "fetch-weather",
+        "fetch-tfrs",
+        "build",
+    ],
 )
 def test_each_subcommand_help_works(cmd):
     result = runner.invoke(app, [cmd, "--help"])
@@ -246,6 +263,36 @@ def test_build_edai_chains_fetch_then_build(monkeypatch: pytest.MonkeyPatch, tmp
     assert captured["build_extract_dir"] == fetched.extract_dir
 
 
+def test_fetch_weather_passes_out_dir(monkeypatch: pytest.MonkeyPatch):
+    captured: dict[str, Any] = {}
+
+    def fake_fetch(out_dir: Path) -> Path:
+        captured["out_dir"] = out_dir
+        return out_dir / "weather.sqlite"
+
+    monkeypatch.setattr(weather, "fetch", fake_fetch)
+
+    result = runner.invoke(app, ["fetch-weather", "--out", "/tmp/wx"])
+
+    assert result.exit_code == 0
+    assert captured["out_dir"] == Path("/tmp/wx")
+
+
+def test_fetch_tfrs_passes_out_dir(monkeypatch: pytest.MonkeyPatch):
+    captured: dict[str, Any] = {}
+
+    def fake_fetch(out_dir: Path) -> Path:
+        captured["out_dir"] = out_dir
+        return out_dir / "tfrs.sqlite"
+
+    monkeypatch.setattr(tfr, "fetch", fake_fetch)
+
+    result = runner.invoke(app, ["fetch-tfrs", "--out", "/tmp/tfr"])
+
+    assert result.exit_code == 0
+    assert captured["out_dir"] == Path("/tmp/tfr")
+
+
 def test_build_chains_all_stages(monkeypatch: pytest.MonkeyPatch, tmp_path):
     """End-to-end `build` should call fetch -> tables.build -> geometry.build
     -> airspace.build in order, threading the NASR DB path through.
@@ -276,19 +323,37 @@ def test_build_chains_all_stages(monkeypatch: pytest.MonkeyPatch, tmp_path):
         calls.append("airspace")
         captured["airspace_nasr_dir"] = nasr_dir
 
+    edai_fetched = edai.EdaiFetchResult(
+        download_dir=tmp_path / "edai_downloads",
+        extract_dir=tmp_path / "edai_extracted",
+    )
+
+    def fake_edai_fetch(out_dir: Path, include_pending: bool = False) -> edai.EdaiFetchResult:
+        calls.append("edai_fetch")
+        captured["edai_include_pending"] = include_pending
+        return edai_fetched
+
+    def fake_edai_build(out_dir: Path, extract_dir: Path) -> None:
+        calls.append("edai_build")
+        captured["edai_extract_dir"] = extract_dir
+
     captured: dict[str, Any] = {}
 
     monkeypatch.setattr(fetch, "fetch", fake_fetch)
     monkeypatch.setattr(tables, "build", fake_tables_build)
     monkeypatch.setattr(geometry, "build", fake_geometry_build)
     monkeypatch.setattr(airspace, "build", fake_airspace_build)
+    monkeypatch.setattr(edai, "fetch", fake_edai_fetch)
+    monkeypatch.setattr(edai, "build", fake_edai_build)
 
     result = runner.invoke(app, ["build", "--out", str(tmp_path)])
 
     assert result.exit_code == 0, result.output
-    assert calls == ["fetch", "tables", "geometry", "airspace"]
+    assert calls == ["fetch", "tables", "geometry", "airspace", "edai_fetch", "edai_build"]
     # The same nasr.sqlite path is threaded through both build steps.
     assert captured["nasr_db"] == captured["geometry_db"] == tmp_path / "nasr.sqlite"
     assert captured["tables_csv_dir"] == fetched.csv_dir
     assert captured["tables_obstacle"] == fetched.obstacle_csv
     assert captured["airspace_nasr_dir"] == fetched.nasr_dir
+    assert captured["edai_extract_dir"] == edai_fetched.extract_dir
+    assert captured["edai_include_pending"] is False

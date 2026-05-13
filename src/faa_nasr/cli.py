@@ -101,14 +101,47 @@ def build_edai_cmd(
     edai.build(out_dir=out_dir, extract_dir=fetched.extract_dir)
 
 
+@app.command("fetch-weather")
+def fetch_weather_cmd(
+    out_dir: Path = typer.Option(Path("."), "--out", "-o"),
+) -> None:
+    """Fetch current aviation weather (METAR/TAF/PIREP/AIRMET/SIGMET) into weather.sqlite.
+
+    Hits aviationweather.gov's GeoJSON API. Each refresh rebuilds the DB --
+    this is realtime data, not a publication cycle, so run on whatever
+    cadence your map needs (every 5-10 minutes is typical).
+    """
+    from faa_nasr import weather
+
+    weather.fetch(out_dir=out_dir)
+
+
+@app.command("fetch-tfrs")
+def fetch_tfrs_cmd(
+    out_dir: Path = typer.Option(Path("."), "--out", "-o"),
+) -> None:
+    """Fetch active TFR polygons + metadata into tfrs.sqlite.
+
+    Pulls polygons from tfr.faa.gov's WFS endpoint and joins per-TFR
+    metadata from the JSON list API. No-shape TFRs (issued but polygon
+    pending) land in a separate attribute-only table.
+    """
+    from faa_nasr import tfr
+
+    tfr.fetch(out_dir=out_dir)
+
+
 @app.command()
 def build(
     out_dir: Path = typer.Option(Path("."), "--out", "-o"),
     work_dir: Path = typer.Option(Path("./local_data"), "--work-dir"),
     edition: str = typer.Option("current", "--edition"),
+    include_pending_edai: bool = typer.Option(
+        False, "--include-pending-edai", help="Also include draft 'Pending' EDAI datasets."
+    ),
 ) -> None:
-    """End-to-end pipeline: fetch -> build-tables -> build-spatial -> build-airspace."""
-    from faa_nasr import airspace, geometry, tables
+    """End-to-end pipeline: fetch -> build-tables -> build-spatial -> build-airspace -> build-edai."""
+    from faa_nasr import airspace, edai, geometry, tables
     from faa_nasr import fetch as _fetch
 
     fetched = _fetch.fetch(out_dir=work_dir, edition=edition, include_obstacles=True)
@@ -120,6 +153,8 @@ def build(
     )
     geometry.build(db_path=nasr_db)
     airspace.build(nasr_dir=fetched.nasr_dir, out_dir=out_dir)
+    edai_fetched = edai.fetch(out_dir=work_dir, include_pending=include_pending_edai)
+    edai.build(out_dir=out_dir, extract_dir=edai_fetched.extract_dir)
 
 
 if __name__ == "__main__":  # pragma: no cover
