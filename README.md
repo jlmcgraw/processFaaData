@@ -4,6 +4,11 @@ Build SQLite and SpatiaLite databases from the FAA's 28-day NASR CSV
 subscription. The output databases can be queried directly or used as a data
 source by Electronic Flight Bag (EFB) software, mapping projects, etc.
 
+This is a heavily AI-assisted conversion from the original perl-based parser.  It will process the CSV data from NASR 
+along with data sets that were previously in separate projects (eg EDAI and METARs/TFRs)
+
+The [AviationMap](https://github.com/jlmcgraw/aviationMap) project will be updated to use this data
+
 The pipeline produces several files:
 
 | File | Contents | Cadence |
@@ -15,31 +20,18 @@ The pipeline produces several files:
 | `weather.sqlite` | Current METARs, TAFs, PIREPs, AIRMETs/SIGMETs, and international SIGMETs as SpatiaLite layers. Realtime feed, not cycle-bound. | On demand |
 | `tfrs.sqlite` | Active TFR polygons and metadata from FAA's TFR WFS + list API. Realtime feed, not cycle-bound. | On demand |
 
-## Quick start (recommended: containerized)
+## Quick start
 
-The easiest way to run this is in a container — it brings its own
+The easiest way to run this is in a container - it brings its own
 `mod_spatialite` and bundled GDAL via `pyogrio`, so you don't need to install
 anything on the host.
 
 Works with both Apple's `container` CLI and Docker:
-
-```sh
-# Build the image
-container build -t faa-nasr .       # or: docker build -t faa-nasr .
-
-# Download + build everything into ./out (takes a few minutes; ~250 MB download)
-mkdir -p out
-container run --rm -v "$PWD/out":/data faa-nasr build --out /data --work-dir /data/work
+```shell
+make container
 ```
 
-After it finishes, `out/` contains the three `.sqlite` files.
-
-For realtime weather and TFRs (run these on your own cadence):
-
-```sh
-container run --rm -v "$PWD/out":/data faa-nasr fetch-weather --out /data
-container run --rm -v "$PWD/out":/data faa-nasr fetch-tfrs --out /data
-```
+After it finishes, `out/` contains the `.sqlite` files.
 
 ## CLI
 
@@ -61,7 +53,7 @@ nasr fetch-tfrs     [--out DIR]   # active TFR polygons + metadata → tfrs.sqli
 build-airspace). The intermediate subcommands let you run from already-extracted
 data when iterating.
 
-`fetch-weather` and `fetch-tfrs` are **not** part of `build` — they are
+`fetch-weather` and `fetch-tfrs` are **not** part of `build` - they are
 realtime feeds that can be refreshed at any cadence (e.g. every few minutes
 for TFRs, every 5–15 minutes for weather). Each overwrites its output file
 on every run.
@@ -80,11 +72,11 @@ uv run nasr --help
 On macOS, install spatialite with `brew install libspatialite`. Note that the
 system `/usr/bin/sqlite3` is built without `--enable-loadable-sqlite-extensions`,
 so the spatial step requires Python's stdlib `sqlite3` (which supports it) or
-Homebrew's sqlite — but Python is what this CLI uses, so that's automatic.
+Homebrew's sqlite - but Python is what this CLI uses, so that's automatic.
 
 ## Disclaimer
 
 This software and the data it produces come with no guarantees about accuracy
 or usefulness whatsoever! Don't use it when your life may be on the line.
 
-— Jesse McGraw, jlmcgraw@gmail.com
+- Jesse McGraw, jlmcgraw@gmail.com

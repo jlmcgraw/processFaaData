@@ -95,6 +95,23 @@ container/run:  ## Run all data-generation commands (28-day build + weather + TF
 	container run --rm -v "$(PWD)/$(OUT_DIR)":/data faa-nasr fetch-weather --out /data
 	container run --rm -v "$(PWD)/$(OUT_DIR)":/data faa-nasr fetch-tfrs --out /data
 
+.PHONY: docker
+docker: docker/build docker/run  ## Build image and generate all data (shortcut)
+
+
+.PHONY: docker/build
+docker/build:  ## Build the container image
+	docker build -t faa-nasr .
+
+
+.PHONY: docker/run
+docker/run:  ## Run all data-generation commands (28-day build + weather + TFRs)
+	mkdir -p $(OUT_DIR)
+	docker run --rm -v "$(PWD)/$(OUT_DIR)":/data faa-nasr build --out /data --work-dir /data/work
+	docker run --rm -v "$(PWD)/$(OUT_DIR)":/data faa-nasr fetch-weather --out /data
+	docker run --rm -v "$(PWD)/$(OUT_DIR)":/data faa-nasr fetch-tfrs --out /data
+
+
 
 # ==== Other Commands ==================================================================================================
 .PHONY: publish
