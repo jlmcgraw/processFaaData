@@ -1,52 +1,82 @@
-Create sqlite and spatialite databases from the 28-day NASR data freely provided by the FAA 
+# faa-nasr
 
-The "spatialite_nasr.sqlite" this creates is used by my Aviation Map project and the 
-sqlite database could be directly used in any Electronic Flight Bag (EFB) program.
+Build SQLite and SpatiaLite databases from the FAA's 28-day NASR CSV
+subscription. The output databases can be queried directly or used as a data
+source by Electronic Flight Bag (EFB) software, mapping projects, etc.
 
-See "Sample SQL queries.sql" for some examples of querying this database
+This is a heavily AI-assisted conversion from the original perl-based parser.  It will process the CSV data from NASR 
+along with data sets that were previously in separate projects (eg EDAI and METARs/TFRs)
 
-A sample spatialite version of the database can be found here: 
-    https://www.dropbox.com/s/ichzdozjoco4jzj/2019-09-12-nasr_databases.zip?dl=0
+The [AviationMap](https://github.com/jlmcgraw/aviationMap) project will be updated to use this data
 
-### Docker    
+The pipeline produces several files:
 
-Build the docker image
+| File | Contents | Cadence |
+|---|---|---|
+| `nasr.sqlite` | One SQLite table per NASR CSV (e.g. `APT_BASE`, `APT_RWY`, `NAV_BASE`, `FIX_BASE`, `OBSTACLE`), plus SpatiaLite POINT geometry columns and spatial indexes for the airport, navaid, fix, AWOS, ILS, FSS, ATC, holding-pattern, and obstacle tables. | 28-day cycle |
+| `class_airspace_spatialite.sqlite` | Class B/C/D/E airspace polygons, from `Class_Airspace.shp`. | 28-day cycle |
+| `special_use_airspace_spatialite.sqlite` | Special use airspace (MOAs, restricted/prohibited areas, etc.) from the SAA AIXM XML. | 28-day cycle |
+| `edai_spatialite.sqlite` *(optional)* | Built by `nasr build-edai` from the FAA's ArcGIS Hub open-data feed (~20 shapefile datasets). Parallel to NASR data; not part of `nasr build`. | 28-day cycle |
+| `weather.sqlite` | Current METARs, TAFs, PIREPs, AIRMETs/SIGMETs, and international SIGMETs as SpatiaLite layers. Realtime feed, not cycle-bound. | On demand |
+| `tfrs.sqlite` | Active TFR polygons and metadata from FAA's TFR WFS + list API. Realtime feed, not cycle-bound. | On demand |
 
+## Quick start
+
+The easiest way to run this is in a container - it brings its own
+`mod_spatialite` and bundled GDAL via `pyogrio`, so you don't need to install
+anything on the host.
+
+Works with both Apple's `container` CLI and Docker:
+```shell
+make container
 ```
-docker build --tag faa_nasr .
+
+After it finishes, `out/` contains the `.sqlite` files.
+
+## CLI
+
+```sh
+nasr fetch          [--out DIR] [--edition current|next] [--obstacles/--no-obstacles]
+nasr build-tables   <csv-dir>  [--db nasr.sqlite] [--obstacle-csv DOF.CSV]
+nasr build-spatial  <db>                                  # adds geometry in place
+nasr build-airspace <nasr-dir> [--out DIR]
+nasr build                     [--out DIR] [--work-dir DIR] [--edition current|next]
+nasr fetch-edai                [--out DIR]                # FAA EDAI open-data shapefiles
+nasr build-edai                [--out DIR] [--work-dir DIR]  # fetch + build edai_spatialite.sqlite
+
+# Realtime feeds (run independently of the 28-day build cycle)
+nasr fetch-weather  [--out DIR]   # METARs, TAFs, PIREPs, AIRMETs/SIGMETs → weather.sqlite
+nasr fetch-tfrs     [--out DIR]   # active TFR polygons + metadata → tfrs.sqlite
 ```
 
+`build` is the end-to-end pipeline (fetch → build-tables → build-spatial →
+build-airspace). The intermediate subcommands let you run from already-extracted
+data when iterating.
 
-Run the docker image
+`fetch-weather` and `fetch-tfrs` are **not** part of `build` - they are
+realtime feeds that can be refreshed at any cadence (e.g. every few minutes
+for TFRs, every 5–15 minutes for weather). Each overwrites its output file
+on every run.
 
+## Local (non-container) install
+
+Requires Python 3.12+, [`uv`](https://docs.astral.sh/uv/), and (for
+`build-spatial`) the `mod_spatialite` SQLite extension installed somewhere
+the loader can find it.
+
+```sh
+uv sync
+uv run nasr --help
 ```
-docker run --rm -it -v /tmp/data:/data/ faa_nasr
-```
 
-### Ubuntu
-These instructions are based on using Ubuntu 16.04
+On macOS, install spatialite with `brew install libspatialite`. Note that the
+system `/usr/bin/sqlite3` is built without `--enable-loadable-sqlite-extensions`,
+so the spatial step requires Python's stdlib `sqlite3` (which supports it) or
+Homebrew's sqlite - but Python is what this CLI uses, so that's automatic.
 
-How to get this utility up and running:
+## Disclaimer
 
-	Install git
-		sudo apt-get install git
+This software and the data it produces come with no guarantees about accuracy
+or usefulness whatsoever! Don't use it when your life may be on the line.
 
-	Download the repository
-		git clone https://github.com/jlmcgraw/processFaaData.git
-
-	Run setup.sh to install necessary dependencies using Carton
-		./setup.sh
-
-    Download the latest NASR and obstacle data
-        ./freshen_local_nasr.sh ./local_data
-    
-    Create the sqlite and spatialite databases from the source FAA data
-        create_databases.sh <name of 28 day .zip file>
-            eg: "create_databases.sh ./local_data/nfdc.faa.gov/webContent/28DaySub/28DaySubscription_Effective_2017-10-12.zip"
-
-This software and the data it produces come with no guarantees about accuracy or usefulness whatsoever!  Don't use it when your life may be on the line!
-
-Thanks for trying this out!  If you have any feedback, ideas or patches please submit them to github.
-
--Jesse McGraw
-jlmcgraw@gmail.com
+- Jesse McGraw, jlmcgraw@gmail.com

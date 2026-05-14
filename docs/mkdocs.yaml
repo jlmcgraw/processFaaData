@@ -1,0 +1,6 @@
+site_name: faa-nasr
+site_description: Build SQLite/SpatiaLite databases from the FAA NASR CSV subscription
+docs_dir: .
+site_dir: ../site
+nav:
+  - Home: index.md

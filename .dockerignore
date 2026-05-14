@@ -1,0 +1,24 @@
+.git
+.idea
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+local_data
+*.sqlite
+*.zip
+
+# Old Perl pipeline (will be deleted in the parity step)
+*.pl
+*.pm
+cpanfile
+setup.sh
+start.sh
+create_databases.sh
+freshen_local_nasr*.sh
+recursiveUnzip.sh
+get_current_nasr_url.py
+add_indexes.sql
+sqlite_to_spatialite.sql
+"Sample SQL queries.sql"

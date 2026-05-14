@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+local_data/
+out/
+site/
+dist/
+.coverage*
+.junit.xml
+*.sqlite
