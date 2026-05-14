@@ -76,6 +76,26 @@ docs/serve:  ## Build the docs and start a local dev server
 	uv run mkdocs serve --config-file=docs/mkdocs.yaml --dev-addr=localhost:10000
 
 
+# ==== Container =======================================================================================================
+OUT_DIR ?= out
+
+.PHONY: container
+container: container/build container/run  ## Build image and generate all data (shortcut)
+
+
+.PHONY: container/build
+container/build:  ## Build the container image
+	container build -t faa-nasr . || docker build -t faa-nasr .
+
+
+.PHONY: container/run
+container/run:  ## Run all data-generation commands (28-day build + weather + TFRs)
+	mkdir -p $(OUT_DIR)
+	container run --rm -v "$(PWD)/$(OUT_DIR)":/data faa-nasr build --out /data --work-dir /data/work
+	container run --rm -v "$(PWD)/$(OUT_DIR)":/data faa-nasr fetch-weather --out /data
+	container run --rm -v "$(PWD)/$(OUT_DIR)":/data faa-nasr fetch-tfrs --out /data
+
+
 # ==== Other Commands ==================================================================================================
 .PHONY: publish
 publish: confirm

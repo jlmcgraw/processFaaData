@@ -4,14 +4,16 @@ Build SQLite and SpatiaLite databases from the FAA's 28-day NASR CSV
 subscription. The output databases can be queried directly or used as a data
 source by Electronic Flight Bag (EFB) software, mapping projects, etc.
 
-The pipeline produces three files:
+The pipeline produces several files:
 
-| File | Contents |
-|---|---|
-| `nasr.sqlite` | One SQLite table per NASR CSV (e.g. `APT_BASE`, `APT_RWY`, `NAV_BASE`, `FIX_BASE`, `OBSTACLE`), plus SpatiaLite POINT geometry columns and spatial indexes for the airport, navaid, fix, AWOS, ILS, FSS, ATC, holding-pattern, and obstacle tables. |
-| `class_airspace_spatialite.sqlite` | Class B/C/D/E airspace polygons, from `Class_Airspace.shp`. |
-| `special_use_airspace_spatialite.sqlite` | Special use airspace (MOAs, restricted/prohibited areas, etc.) from the SAA AIXM XML. |
-| `edai_spatialite.sqlite` *(optional)* | Built by `nasr build-edai` from the FAA's ArcGIS Hub open-data feed (~20 shapefile datasets). Parallel to NASR data; not part of `nasr build`. |
+| File | Contents | Cadence |
+|---|---|---|
+| `nasr.sqlite` | One SQLite table per NASR CSV (e.g. `APT_BASE`, `APT_RWY`, `NAV_BASE`, `FIX_BASE`, `OBSTACLE`), plus SpatiaLite POINT geometry columns and spatial indexes for the airport, navaid, fix, AWOS, ILS, FSS, ATC, holding-pattern, and obstacle tables. | 28-day cycle |
+| `class_airspace_spatialite.sqlite` | Class B/C/D/E airspace polygons, from `Class_Airspace.shp`. | 28-day cycle |
+| `special_use_airspace_spatialite.sqlite` | Special use airspace (MOAs, restricted/prohibited areas, etc.) from the SAA AIXM XML. | 28-day cycle |
+| `edai_spatialite.sqlite` *(optional)* | Built by `nasr build-edai` from the FAA's ArcGIS Hub open-data feed (~20 shapefile datasets). Parallel to NASR data; not part of `nasr build`. | 28-day cycle |
+| `weather.sqlite` | Current METARs, TAFs, PIREPs, AIRMETs/SIGMETs, and international SIGMETs as SpatiaLite layers. Realtime feed, not cycle-bound. | On demand |
+| `tfrs.sqlite` | Active TFR polygons and metadata from FAA's TFR WFS + list API. Realtime feed, not cycle-bound. | On demand |
 
 ## Quick start (recommended: containerized)
 
@@ -32,6 +34,13 @@ container run --rm -v "$PWD/out":/data faa-nasr build --out /data --work-dir /da
 
 After it finishes, `out/` contains the three `.sqlite` files.
 
+For realtime weather and TFRs (run these on your own cadence):
+
+```sh
+container run --rm -v "$PWD/out":/data faa-nasr fetch-weather --out /data
+container run --rm -v "$PWD/out":/data faa-nasr fetch-tfrs --out /data
+```
+
 ## CLI
 
 ```sh
@@ -42,11 +51,20 @@ nasr build-airspace <nasr-dir> [--out DIR]
 nasr build                     [--out DIR] [--work-dir DIR] [--edition current|next]
 nasr fetch-edai                [--out DIR]                # FAA EDAI open-data shapefiles
 nasr build-edai                [--out DIR] [--work-dir DIR]  # fetch + build edai_spatialite.sqlite
+
+# Realtime feeds (run independently of the 28-day build cycle)
+nasr fetch-weather  [--out DIR]   # METARs, TAFs, PIREPs, AIRMETs/SIGMETs → weather.sqlite
+nasr fetch-tfrs     [--out DIR]   # active TFR polygons + metadata → tfrs.sqlite
 ```
 
 `build` is the end-to-end pipeline (fetch → build-tables → build-spatial →
 build-airspace). The intermediate subcommands let you run from already-extracted
 data when iterating.
+
+`fetch-weather` and `fetch-tfrs` are **not** part of `build` — they are
+realtime feeds that can be refreshed at any cadence (e.g. every few minutes
+for TFRs, every 5–15 minutes for weather). Each overwrites its output file
+on every run.
 
 ## Local (non-container) install
 
