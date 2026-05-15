@@ -14,6 +14,7 @@ stale. (The original jlmcgraw/edai_data script's host is gone, and its
 
 from __future__ import annotations
 
+import contextlib
 import email.utils
 import os
 import zipfile
@@ -66,13 +67,13 @@ def fetch_catalog(client: httpx.Client | None = None) -> list[EdaiDatasetMeta]:
     that offers a shapefile (ZIP) download. Strips out raster/web-only
     datasets (VFR Sectional, ADDS-readme, etc.) and other non-spatial entries.
     """
-    if client is None:
-        with httpx.Client(timeout=30.0, follow_redirects=True) as c:
-            resp = c.get(EDAI_CATALOG_URL)
-            resp.raise_for_status()
-            payload = resp.json()
-    else:
-        resp = client.get(EDAI_CATALOG_URL)
+    ctx = (
+        httpx.Client(timeout=30.0, follow_redirects=True)
+        if client is None
+        else contextlib.nullcontext(client)
+    )
+    with ctx as c:
+        resp = c.get(EDAI_CATALOG_URL)
         resp.raise_for_status()
         payload = resp.json()
     return [m for m in _parse_catalog(payload) if m is not None]

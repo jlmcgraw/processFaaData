@@ -578,16 +578,6 @@ def _patch_geometry_internals(
     monkeypatch.setattr(
         geometry, "_existing_joined_geoms", lambda _g, _c: existing_joined_geoms or []
     )
-    monkeypatch.setattr(
-        geometry,
-        "_already_geometric",
-        lambda _c, g: (g.table, g.geom_column) in (already_geometric_keys or set()),
-    )
-    monkeypatch.setattr(
-        geometry,
-        "_joined_geom_already_present",
-        lambda _c, g: (g.table, g.geom_column) in (already_geometric_keys or set()),
-    )
     seen_tables = (tables_present or set()) | (
         {"APT_RWY", "APT_RWY_END"} if apt_rwy_present else set()
     )

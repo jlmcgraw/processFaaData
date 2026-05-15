@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -209,8 +210,7 @@ def build(db_path: Path) -> None:
     if not db_path.exists():
         raise FileNotFoundError(f"database not found: {db_path}")
 
-    conn = sqlite3.connect(db_path)
-    try:
+    with contextlib.closing(sqlite3.connect(db_path)) as conn:
         conn.enable_load_extension(True)
         _load_mod_spatialite(conn)
         # SpatiaLite 5+ uses RTreeAlign() inside CreateSpatialIndex; the SQLite
@@ -225,7 +225,7 @@ def build(db_path: Path) -> None:
 
         # Pass 1: direct POINT geometries (lon/lat columns on the same table).
         existing_points = _existing_tables(_POINT_GEOMS, conn)
-        to_populate_points = [g for g in existing_points if not _already_geometric(conn, g)]
+        to_populate_points = [g for g in existing_points if not _column_already_registered(conn, g.table, g.geom_column)]
         skipped = len(existing_points) - len(to_populate_points)
         if skipped:
             _log.info(f"  {skipped} POINT(s) already have geometry -- skipping")
@@ -259,7 +259,7 @@ def build(db_path: Path) -> None:
         )
         existing_joins = _existing_joined_geoms(_JOINED_POINT_GEOMS, conn)
         to_populate_joins = [
-            jg for jg in existing_joins if not _joined_geom_already_present(conn, jg)
+            jg for jg in existing_joins if not _column_already_registered(conn, jg.table, jg.geom_column)
         ]
         joined_total = 0
         joined_bar = tqdm(
@@ -354,8 +354,6 @@ def build(db_path: Path) -> None:
             conn.execute("SELECT CreateSpatialIndex(?, ?)", (table, col))
 
         conn.commit()
-    finally:
-        conn.close()
 
 
 def _load_mod_spatialite(conn: sqlite3.Connection) -> None:
@@ -429,18 +427,6 @@ def _column_already_registered(conn: sqlite3.Connection, table: str, geom_column
     return row is not None
 
 
-def _already_geometric(conn: sqlite3.Connection, g: PointGeom) -> bool:
-    return _column_already_registered(conn, g.table, g.geom_column)
-
-
-def _joined_geom_already_present(conn: sqlite3.Connection, jg: JoinedPointGeom) -> bool:
-    return _column_already_registered(conn, jg.table, jg.geom_column)
-
-
-def _has_spatial_index(conn: sqlite3.Connection, g: PointGeom) -> bool:
-    return _spatial_index_exists(conn, g.table, g.geom_column)
-
-
 def _spatial_index_exists(conn: sqlite3.Connection, table: str, geom_column: str) -> bool:
     """SpatiaLite names the R-tree backing table idx_<table>_<column>."""
     row = conn.execute(
@@ -452,12 +438,9 @@ def _spatial_index_exists(conn: sqlite3.Connection, table: str, geom_column: str
 
 def _all_geom_columns(conn: sqlite3.Connection) -> list[tuple[str, str]]:
     """Return every (table, geom_column) registered in geometry_columns."""
-    return [
-        (row[0], row[1])
-        for row in conn.execute(
-            "SELECT f_table_name, f_geometry_column FROM geometry_columns"
-        ).fetchall()
-    ]
+    return conn.execute(
+        "SELECT f_table_name, f_geometry_column FROM geometry_columns"
+    ).fetchall()
 
 
 def _populate_point_geometry(conn: sqlite3.Connection, g: PointGeom) -> int:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import sqlite3
 from collections.abc import Iterator
@@ -21,8 +22,7 @@ def build(csv_dir: Path, db_path: Path, obstacle_csv: Path | None = None) -> Non
     _log.step(f"build-tables -> {db_path}")
     if db_path.exists():
         db_path.unlink()
-    conn = sqlite3.connect(db_path)
-    try:
+    with contextlib.closing(sqlite3.connect(db_path)) as conn:
         conn.execute("PRAGMA page_size = 4096")
         conn.execute("PRAGMA synchronous = OFF")
         conn.execute("PRAGMA journal_mode = MEMORY")
@@ -42,8 +42,6 @@ def build(csv_dir: Path, db_path: Path, obstacle_csv: Path | None = None) -> Non
             total_rows += _load_csv(conn, csv_path, table_name=table_name)
         _log.info(f"  loaded {total_rows:,} rows across {len(jobs)} tables")
         conn.commit()
-    finally:
-        conn.close()
 
 
 def _load_csv(conn: sqlite3.Connection, csv_path: Path, table_name: str) -> int:

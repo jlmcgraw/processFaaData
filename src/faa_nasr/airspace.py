@@ -6,6 +6,7 @@ we don't need geopandas + pandas at runtime.
 
 from __future__ import annotations
 
+import contextlib
 import re
 import sqlite3
 import warnings
@@ -190,8 +191,7 @@ def _build_sua(nasr_dir: Path, dst: Path) -> None:
 
     # Pass 3: build spatial indexes on the merged geometry layers.
     if geometry_layers:
-        conn = sqlite3.connect(dst)
-        try:
+        with contextlib.closing(sqlite3.connect(dst)) as conn:
             conn.enable_load_extension(True)
             _load_mod_spatialite(conn)
             conn.execute("PRAGMA trusted_schema = ON")
@@ -204,8 +204,6 @@ def _build_sua(nasr_dir: Path, dst: Path) -> None:
             ):
                 conn.execute("SELECT CreateSpatialIndex(?, ?)", (layer, "GEOMETRY"))
             conn.commit()
-        finally:
-            conn.close()
 
     _log.info(f"  wrote {len(layer_buckets)} layers / {total_features:,} features")
 
@@ -234,6 +232,37 @@ def _copy_shapefile(src: Path, dst: Path, layer_name: str) -> int:
         geometry_type=_promote_geom_type(meta["geometry_type"]),
         crs=meta.get("crs"),
         layer=layer_name,
+        driver="SQLite",
+        dataset_options={"SPATIALITE": "YES"},
+        layer_options={"SPATIAL_INDEX": "YES", "LAUNDER": "NO"},
+        promote_to_multi=True,
+        append=dst.exists(),
+    )
+    return len(geometry)
+
+
+def _copy_geojson_layer(src: Path, dst: Path, layer_name: str, geometry_type: str) -> int:
+    """Copy one GeoJSON file's features into a SpatiaLite layer.
+
+    Returns the number of features written. Empty feeds produce no layer --
+    pyogrio.raw.write refuses an empty payload, and a schemaless empty layer
+    is more confusing than an absent one.
+    """
+    safe = _safe_name(layer_name)
+    try:
+        meta, _fids, geometry, field_data = pyogrio.raw.read(src)
+    except pyogrio.errors.DataSourceError:
+        return 0
+    if geometry is None or len(geometry) == 0:
+        return 0
+    pyogrio.raw.write(
+        dst,
+        geometry=geometry,
+        field_data=field_data,
+        fields=meta["fields"],
+        geometry_type=_promote_geom_type(geometry_type),
+        crs=meta.get("crs") or "EPSG:4326",
+        layer=safe,
         driver="SQLite",
         dataset_options={"SPATIALITE": "YES"},
         layer_options={"SPATIAL_INDEX": "YES", "LAUNDER": "NO"},
@@ -322,11 +351,7 @@ def _read_layer_source(
 
 def _ordered_union(*key_iterables: Iterable[str]) -> list[str]:
     """Union of keys preserving first-seen insertion order across all iterables."""
-    seen: dict[str, None] = {}
-    for keys in key_iterables:
-        for k in keys:
-            seen.setdefault(k, None)
-    return list(seen)
+    return list(dict.fromkeys(k for keys in key_iterables for k in keys))
 
 
 def _stack_column(name: str, chunks: list[_SourceChunk], getter: ColumnGetter) -> np.ndarray:
@@ -489,8 +514,7 @@ def _extract_xlinks(xml_path: Path) -> FkLookup:
 
 def _init_spatialite_db(dst: Path) -> None:
     """Create `dst` as an empty SpatiaLite-initialized SQLite database."""
-    conn = sqlite3.connect(dst)
-    try:
+    with contextlib.closing(sqlite3.connect(dst)) as conn:
         conn.enable_load_extension(True)
         _load_mod_spatialite(conn)
         conn.execute("PRAGMA trusted_schema = ON")
@@ -498,16 +522,13 @@ def _init_spatialite_db(dst: Path) -> None:
         conn.execute("PRAGMA journal_mode = MEMORY")
         conn.execute("SELECT InitSpatialMetadata(1)")
         conn.commit()
-    finally:
-        conn.close()
 
 
 def _write_attribute_only_table(
     dst: Path, table: str, fields: list[str], field_data: list[np.ndarray]
 ) -> None:
     """Write a non-spatial table via raw sqlite3 (pyogrio.raw.write requires geometry)."""
-    conn = sqlite3.connect(dst)
-    try:
+    with contextlib.closing(sqlite3.connect(dst)) as conn:
         conn.execute("PRAGMA synchronous = OFF")
         conn.execute("PRAGMA journal_mode = MEMORY")
         cols = ", ".join(f'"{c}" TEXT' for c in fields)
@@ -519,8 +540,6 @@ def _write_attribute_only_table(
         )
         conn.executemany(f'INSERT INTO "{table}" VALUES ({placeholders})', rows)
         conn.commit()
-    finally:
-        conn.close()
 
 
 def _promote_geom_type(geom_type: str | None) -> str | None:

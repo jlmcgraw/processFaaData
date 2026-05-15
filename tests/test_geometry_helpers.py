@@ -15,9 +15,9 @@ import pytest
 from faa_nasr import geometry
 from faa_nasr.geometry import (
     PointGeom,
-    _already_geometric,
+    _column_already_registered,
     _existing_tables,
-    _has_spatial_index,
+    _spatial_index_exists,
     _spatialite_initialized,
 )
 
@@ -90,14 +90,14 @@ def test_existing_tables_empty_when_nothing_matches(conn):
 def test_already_geometric_false_when_table_not_in_geometry_columns(conn):
     _stub_geometry_columns(conn)
     g = PointGeom("APT_BASE", "geometry", "LON", "LAT")
-    assert _already_geometric(conn, g) is False
+    assert _column_already_registered(conn, g.table, g.geom_column) is False
 
 
 def test_already_geometric_true_for_exact_match(conn):
     _stub_geometry_columns(conn)
     conn.execute("INSERT INTO geometry_columns VALUES (?, ?)", ("APT_BASE", "geometry"))
     g = PointGeom("APT_BASE", "geometry", "LON", "LAT")
-    assert _already_geometric(conn, g) is True
+    assert _column_already_registered(conn, g.table, g.geom_column) is True
 
 
 def test_already_geometric_handles_lowercase_storage(conn):
@@ -107,28 +107,28 @@ def test_already_geometric_handles_lowercase_storage(conn):
     _stub_geometry_columns(conn)
     conn.execute("INSERT INTO geometry_columns VALUES (?, ?)", ("apt_base", "geometry"))
     g = PointGeom("APT_BASE", "geometry", "LON", "LAT")
-    assert _already_geometric(conn, g) is True
+    assert _column_already_registered(conn, g.table, g.geom_column) is True
 
 
 def test_already_geometric_handles_mixed_case_query(conn):
     _stub_geometry_columns(conn)
     conn.execute("INSERT INTO geometry_columns VALUES (?, ?)", ("APT_BASE", "GEOMETRY"))
     g = PointGeom("apt_base", "geometry", "LON", "LAT")
-    assert _already_geometric(conn, g) is True
+    assert _column_already_registered(conn, g.table, g.geom_column) is True
 
 
 def test_already_geometric_distinguishes_different_tables(conn):
     _stub_geometry_columns(conn)
     conn.execute("INSERT INTO geometry_columns VALUES (?, ?)", ("OTHER_TABLE", "geometry"))
     g = PointGeom("APT_BASE", "geometry", "LON", "LAT")
-    assert _already_geometric(conn, g) is False
+    assert _column_already_registered(conn, g.table, g.geom_column) is False
 
 
 def test_already_geometric_distinguishes_different_columns(conn):
     _stub_geometry_columns(conn)
     conn.execute("INSERT INTO geometry_columns VALUES (?, ?)", ("APT_BASE", "other_geom"))
     g = PointGeom("APT_BASE", "geometry", "LON", "LAT")
-    assert _already_geometric(conn, g) is False
+    assert _column_already_registered(conn, g.table, g.geom_column) is False
 
 
 # ---------------------------------------------------------------------------
@@ -138,30 +138,30 @@ def test_already_geometric_distinguishes_different_columns(conn):
 
 def test_has_spatial_index_false_when_rtree_backing_table_missing(conn):
     g = PointGeom("APT_BASE", "geometry", "LON", "LAT")
-    assert _has_spatial_index(conn, g) is False
+    assert _spatial_index_exists(conn, g.table, g.geom_column) is False
 
 
 def test_has_spatial_index_finds_rtree_backing_table(conn):
     # SpatiaLite names the R-tree backing table idx_<table>_<column>.
     conn.execute("CREATE TABLE idx_APT_BASE_geometry (id INTEGER)")
     g = PointGeom("APT_BASE", "geometry", "LON", "LAT")
-    assert _has_spatial_index(conn, g) is True
+    assert _spatial_index_exists(conn, g.table, g.geom_column) is True
 
 
 def test_has_spatial_index_handles_case_insensitive_match(conn):
     conn.execute("CREATE TABLE idx_apt_base_geometry (id INTEGER)")
     g = PointGeom("APT_BASE", "geometry", "LON", "LAT")
-    assert _has_spatial_index(conn, g) is True
+    assert _spatial_index_exists(conn, g.table, g.geom_column) is True
 
 
 def test_has_spatial_index_does_not_match_other_tables(conn):
     conn.execute("CREATE TABLE idx_NAV_BASE_geometry (id INTEGER)")
     g = PointGeom("APT_BASE", "geometry", "LON", "LAT")
-    assert _has_spatial_index(conn, g) is False
+    assert _spatial_index_exists(conn, g.table, g.geom_column) is False
 
 
 # ---------------------------------------------------------------------------
-# _existing_joined_geoms / _joined_geom_already_present / _all_geom_columns
+# _existing_joined_geoms / _all_geom_columns
 # ---------------------------------------------------------------------------
 
 
@@ -181,7 +181,7 @@ def test_joined_geom_already_present_delegates_to_column_lookup(conn):
     _stub_geometry_columns(conn)
     conn.execute("INSERT INTO geometry_columns VALUES (?, ?)", ("ATC_BASE", "geometry"))
     jg = geometry.JoinedPointGeom("ATC_BASE", "geometry", "APT_BASE", "geometry", "x", "y")
-    assert geometry._joined_geom_already_present(conn, jg) is True
+    assert geometry._column_already_registered(conn, jg.table, jg.geom_column) is True
 
 
 def test_all_geom_columns_lists_every_registered_pair(conn):
@@ -207,4 +207,4 @@ def test_has_spatial_index_does_not_match_partial_name(conn):
     # rtree backing table for a different geometry column on the same table.
     conn.execute("CREATE TABLE idx_APT_BASE_other (id INTEGER)")
     g = PointGeom("APT_BASE", "geometry", "LON", "LAT")
-    assert _has_spatial_index(conn, g) is False
+    assert _spatial_index_exists(conn, g.table, g.geom_column) is False

@@ -16,17 +16,15 @@ Output is two layers in `tfrs.sqlite`:
 
 from __future__ import annotations
 
+import contextlib
 import json
 from pathlib import Path
 
 import httpx
-import pyogrio
-import pyogrio.errors
-import pyogrio.raw
 import sqlite3
 
 from faa_nasr import _log
-from faa_nasr.airspace import _init_spatialite_db, _promote_geom_type, _safe_name
+from faa_nasr.airspace import _copy_geojson_layer, _init_spatialite_db
 
 TFR_WFS_URL = "https://tfr.faa.gov/geoserver/TFR/ows"
 TFR_LIST_URL = "https://tfr.faa.gov/tfrapi/getTfrList"
@@ -122,32 +120,6 @@ def _enrich_with_tfr_list(polygons: dict, tfr_list: list[dict]) -> dict:
     return polygons
 
 
-def _copy_geojson_layer(src: Path, dst: Path, layer_name: str, geometry_type: str) -> int:
-    """Copy one GeoJSON file's features into a SpatiaLite layer."""
-    safe = _safe_name(layer_name)
-    try:
-        meta, _fids, geometry, field_data = pyogrio.raw.read(src)
-    except pyogrio.errors.DataSourceError:
-        return 0
-    if geometry is None or len(geometry) == 0:
-        return 0
-    pyogrio.raw.write(
-        dst,
-        geometry=geometry,
-        field_data=field_data,
-        fields=meta["fields"],
-        geometry_type=_promote_geom_type(geometry_type),
-        crs=meta.get("crs") or "EPSG:4326",
-        layer=safe,
-        driver="SQLite",
-        dataset_options={"SPATIALITE": "YES"},
-        layer_options={"SPATIAL_INDEX": "YES", "LAUNDER": "NO"},
-        promote_to_multi=True,
-        append=dst.exists(),
-    )
-    return len(geometry)
-
-
 def _write_no_shape_table(dst: Path, items: list[dict]) -> int:
     """Write the no-shape TFR list as a plain (non-spatial) table.
 
@@ -159,17 +131,15 @@ def _write_no_shape_table(dst: Path, items: list[dict]) -> int:
     if not items:
         return 0
     columns = sorted({k for item in items for k in item.keys()})
-    conn = sqlite3.connect(dst)
-    try:
+    with contextlib.closing(sqlite3.connect(dst)) as conn:
         cols_ddl = ", ".join(f'"{c}" TEXT' for c in columns)
         conn.execute('DROP TABLE IF EXISTS "tfrs_no_shape"')
         conn.execute(f'CREATE TABLE "tfrs_no_shape" ({cols_ddl})')
         placeholders = ",".join("?" * len(columns))
-        rows = [
-            tuple("" if item.get(c) is None else str(item.get(c)) for c in columns) for item in items
-        ]
+        rows = (
+            tuple("" if (v := item.get(c)) is None else str(v) for c in columns)
+            for item in items
+        )
         conn.executemany(f'INSERT INTO "tfrs_no_shape" VALUES ({placeholders})', rows)
         conn.commit()
-    finally:
-        conn.close()
     return len(items)

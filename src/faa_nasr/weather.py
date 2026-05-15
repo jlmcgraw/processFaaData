@@ -23,13 +23,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
-import pyogrio
-import pyogrio.errors
-import pyogrio.raw
 from tqdm import tqdm
 
 from faa_nasr import _log
-from faa_nasr.airspace import _init_spatialite_db, _promote_geom_type, _safe_name
+from faa_nasr.airspace import _copy_geojson_layer, _init_spatialite_db
 
 WEATHER_API_BASE = "https://aviationweather.gov/api/data"
 WEATHER_OUTPUT_DB = "weather.sqlite"
@@ -108,34 +105,3 @@ def _fetch_geojson(client: httpx.Client, feed: WeatherFeed) -> dict:
     resp = client.get(url, params=feed.params)
     resp.raise_for_status()
     return resp.json()
-
-
-def _copy_geojson_layer(src: Path, dst: Path, layer_name: str, geometry_type: str) -> int:
-    """Copy one GeoJSON file's features into a SpatiaLite layer.
-
-    Returns the number of features written. Empty feeds (no features) still
-    produce no layer -- pyogrio.raw.write refuses an empty payload, and a
-    schemaless empty layer is more confusing than an absent one.
-    """
-    safe = _safe_name(layer_name)
-    try:
-        meta, _fids, geometry, field_data = pyogrio.raw.read(src)
-    except pyogrio.errors.DataSourceError:
-        return 0
-    if geometry is None or len(geometry) == 0:
-        return 0
-    pyogrio.raw.write(
-        dst,
-        geometry=geometry,
-        field_data=field_data,
-        fields=meta["fields"],
-        geometry_type=_promote_geom_type(geometry_type),
-        crs=meta.get("crs") or "EPSG:4326",
-        layer=safe,
-        driver="SQLite",
-        dataset_options={"SPATIALITE": "YES"},
-        layer_options={"SPATIAL_INDEX": "YES", "LAUNDER": "NO"},
-        promote_to_multi=True,
-        append=dst.exists(),
-    )
-    return len(geometry)
