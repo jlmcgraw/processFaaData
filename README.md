@@ -12,6 +12,21 @@ First you will need to download all data locally using [aviation-data-mirror](ht
 
 The [AviationMap](https://github.com/jlmcgraw/aviationMap) project will be updated to use this data
 
+## Quick start
+
+Before running the 28-day build, use [aviation-data-mirror](https://github.com/jlmcgraw/aviation-data-mirror) to download the source
+products and generate its manifest
+
+Make a link to where that data was downloaded:
+```shell
+ln -s -f /aviation_data_mirror/aviation_data ./aviation_data
+```
+
+Then run `make container`.  This should work with both Apple's `container` CLI and Docker:
+```shell
+make container
+```
+
 Data acquisition for cycle-based FAA products is handled by the separate
 [aviation-data-mirror](https://github.com/jlmcgraw/aviation-data-mirror) tool. This project consumes `aviation_data/manifest.json` and the
 local paths it describes; it no longer downloads NASR, CIFP, DOF, or EDAI
@@ -29,10 +44,11 @@ The pipeline produces several files:
 | `weather.sqlite` | Current METARs, TAFs, PIREPs, AIRMETs/SIGMETs, and international SIGMETs as SpatiaLite layers. Realtime feed, not cycle-bound. | On demand |
 | `tfrs.sqlite` | Active TFR polygons and metadata from FAA's TFR WFS + list API. Realtime feed, not cycle-bound. | On demand |
 
+
 ## CIFP — Coded Instrument Flight Procedures
 
 The FAA publishes the CIFP as a fixed-width text file (`FAACIFP18`) in
-[ARINC 424-18](https://www.arinc.com/cf/store/catalog_detail.cfm?item_id=646)
+ARINC 424-18
 format on the same 28-day cycle as NASR. It contains the authoritative
 definition of every published instrument procedure in the US national airspace,
 as well as the underlying infrastructure they reference.
@@ -71,24 +87,6 @@ Continuation records (e.g. SBAS authorization data for LPV approaches, or
 restrictive airspace time-of-use schedules) land in separate tables prefixed
 with `continuation_`.
 
-### Parsing the CIFP
-
-**Option 1 — from aviation-data-mirror data:**
-```sh
-uv run aviation-data-mirror manifest --root ./aviation_data --out ./aviation_data/manifest.json
-nasr build --mirror-root ./aviation_data
-```
-
-**Option 2 — if you already have a FAACIFP18 file:**
-```sh
-nasr build-cifp /path/to/FAACIFP18 [--db cifp.sqlite]
-```
-
-The `build-cifp` command reads all 132-character records, routes each one to
-its section parser, strips blank-padding columns, adds `_WGS84` decimal
-columns for every coordinate field, and writes the result in a single
-transaction (~400K records in ~10 seconds).
-
 ### Example queries
 
 ```sql
@@ -120,32 +118,6 @@ SELECT RouteIdentifier, SequenceNumber, FixIdentifier,
 FROM "primary_E_R_base_Enroute - Airways and Routes"
 WHERE FixIdentifier = 'HISKU'
 ORDER BY RouteIdentifier, CAST(SequenceNumber AS INTEGER);
-```
-
-## Quick start
-
-The easiest way to run this is in a container - it brings its own
-`mod_spatialite` and bundled GDAL via `pyogrio`, so you don't need to install
-anything on the host.
-
-Before running the 28-day build, use `aviation-data-mirror` to download the source
-products and generate its manifest:
-
-```sh
-uv run aviation-data-mirror manifest --root ./aviation_data --out ./aviation_data/manifest.json
-```
-
-Works with both Apple's `container` CLI and Docker:
-```shell
-make container
-```
-
-After it finishes, `out/` contains the `.sqlite` files.
-
-`nasr build` reads that manifest by default:
-
-```sh
-nasr build --out out --mirror-root ./aviation_data
 ```
 
 ## CLI
