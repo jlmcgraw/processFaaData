@@ -18,10 +18,10 @@ from __future__ import annotations
 
 import contextlib
 import json
+import sqlite3
 from pathlib import Path
 
 import httpx
-import sqlite3
 
 from faa_nasr import _log
 from faa_nasr.airspace import _copy_geojson_layer, _init_spatialite_db
@@ -137,8 +137,7 @@ def _write_no_shape_table(dst: Path, items: list[dict]) -> int:
         conn.execute(f'CREATE TABLE "tfrs_no_shape" ({cols_ddl})')
         placeholders = ",".join("?" * len(columns))
         rows = (
-            tuple("" if (v := item.get(c)) is None else str(v) for c in columns)
-            for item in items
+            tuple("" if (v := item.get(c)) is None else str(v) for c in columns) for item in items
         )
         conn.executemany(f'INSERT INTO "tfrs_no_shape" VALUES ({placeholders})', rows)
         conn.commit()

@@ -8,7 +8,6 @@ orchestrator, and the top-level build dispatcher.
 from __future__ import annotations
 
 import sqlite3
-import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -16,46 +15,6 @@ import numpy as np
 import pytest
 
 from faa_nasr import airspace
-
-
-def _make_zip(path: Path, files: dict[str, bytes]) -> None:
-    with zipfile.ZipFile(path, "w") as zf:
-        for name, data in files.items():
-            zf.writestr(name, data)
-
-
-# ---------------------------------------------------------------------------
-# _extract_recursive
-# ---------------------------------------------------------------------------
-
-
-def test_extract_recursive_extracts_top_level_zip(tmp_path):
-    src = tmp_path / "outer.zip"
-    _make_zip(src, {"a.txt": b"x"})
-    dest = tmp_path / "dest"
-    dest.mkdir()
-
-    airspace._extract_recursive(src, dest)
-
-    assert (dest / "a.txt").read_bytes() == b"x"
-
-
-def test_extract_recursive_walks_nested_zips(tmp_path):
-    """The SAA bundle ships SaaSubscriberFile.zip containing Saa_Sub_File.zip
-    containing the per-airspace XML files. Recurse one level deep."""
-    inner = tmp_path / "inner.zip"
-    _make_zip(inner, {"AIRSPACE.xml": b"<root/>"})
-    outer = tmp_path / "outer.zip"
-    with zipfile.ZipFile(outer, "w") as zf:
-        zf.write(inner, arcname="Saa_Sub_File.zip")
-    dest = tmp_path / "dest"
-    dest.mkdir()
-
-    airspace._extract_recursive(outer, dest)
-
-    # Recursion extracted Saa_Sub_File.zip to dest/Saa_Sub_File/, where its
-    # contents (AIRSPACE.xml) ended up.
-    assert (dest / "Saa_Sub_File" / "AIRSPACE.xml").read_bytes() == b"<root/>"
 
 
 # ---------------------------------------------------------------------------
@@ -211,14 +170,25 @@ def test_build_class_airspace_skips_when_no_shapefile_dir(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# _build_sua early-return when SaaSubscriberFile.zip missing
+# _build_sua early-return when AIXM directory or XML files are missing
 # ---------------------------------------------------------------------------
 
 
-def test_build_sua_skips_when_no_saa_zip(tmp_path):
-    """Same shape: missing source -> skip without writing anything."""
+def test_build_sua_skips_when_no_aixm_dir(tmp_path):
+    """Missing AIXM directory -> skip without writing anything."""
     nasr_dir = tmp_path / "nasr"
     nasr_dir.mkdir()
+    dst = tmp_path / "sua.sqlite"
+
+    airspace._build_sua(nasr_dir=nasr_dir, dst=dst)
+
+    assert not dst.exists()
+
+
+def test_build_sua_skips_when_no_xml_files(tmp_path):
+    """AIXM directory present but no XML files -> skip without writing anything."""
+    nasr_dir = tmp_path / "nasr"
+    (nasr_dir / "Additional_Data" / "AIXM").mkdir(parents=True)
     dst = tmp_path / "sua.sqlite"
 
     airspace._build_sua(nasr_dir=nasr_dir, dst=dst)

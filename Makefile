@@ -25,6 +25,7 @@ clean:  ## Clean up build artifacts and other junk
 	@rm -rf .mypy_cache
 	@rm -f .coverage*
 	@rm -f .junit.xml
+	@rm -rf .mutmut-cache html/
 
 
 # ==== Quality Control =================================================================================================
@@ -55,6 +56,19 @@ qa/full: qa/format qa/test qa/lint qa/types  ## Run the full set of quality chec
 	@echo "All quality checks pass!"
 
 
+.PHONY: qa/mutmut
+qa/mutmut:  ## Run mutation tests against src/faa_nasr (slow)
+	uv run mutmut run
+
+.PHONY: qa/mutmut/results
+qa/mutmut/results:  ## Show surviving mutants from the last mutmut run
+	uv run mutmut results
+
+.PHONY: qa/mutmut/html
+qa/mutmut/html:  ## Generate HTML report from the last mutmut run (outputs to html/)
+	uv run mutmut html
+
+
 .PHONY: qa/format
 qa/format:  ## Run code formatters
 	uv run ruff format ${PACKAGE_TARGET} tests
@@ -78,6 +92,7 @@ docs/serve:  ## Build the docs and start a local dev server
 
 # ==== Container =======================================================================================================
 OUT_DIR ?= out
+MIRROR_ROOT ?= aviation_data
 
 .PHONY: container
 container: container/build container/run  ## Build image and generate all data (shortcut)
@@ -89,9 +104,10 @@ container/build:  ## Build the container image
 
 
 .PHONY: container/run
-container/run:  ## Run all data-generation commands (28-day build + weather + TFRs)
+container/run:  ## Run all data-generation commands (mirror build + weather + TFRs)
 	mkdir -p $(OUT_DIR)
-	container run --rm -v "$(PWD)/$(OUT_DIR)":/data faa-nasr build --out /data --work-dir /data/work
+	container run --rm -v "$(PWD)/$(OUT_DIR)":/data -v "$(PWD)/$(MIRROR_ROOT)":/aviation_data:ro faa-nasr build --out /data --mirror-root /aviation_data
+	container run --rm -v "$(PWD)/$(OUT_DIR)":/data faa-nasr build-cifp-spatial /data/cifp.sqlite
 	container run --rm -v "$(PWD)/$(OUT_DIR)":/data faa-nasr fetch-weather --out /data
 	container run --rm -v "$(PWD)/$(OUT_DIR)":/data faa-nasr fetch-tfrs --out /data
 
@@ -105,9 +121,10 @@ docker/build:  ## Build the container image
 
 
 .PHONY: docker/run
-docker/run:  ## Run all data-generation commands (28-day build + weather + TFRs)
+docker/run:  ## Run all data-generation commands (mirror build + weather + TFRs)
 	mkdir -p $(OUT_DIR)
-	docker run --rm -v "$(PWD)/$(OUT_DIR)":/data faa-nasr build --out /data --work-dir /data/work
+	docker run --rm -v "$(PWD)/$(OUT_DIR)":/data -v "$(PWD)/$(MIRROR_ROOT)":/aviation_data:ro faa-nasr build --out /data --mirror-root /aviation_data
+	docker run --rm -v "$(PWD)/$(OUT_DIR)":/data faa-nasr build-cifp-spatial /data/cifp.sqlite
 	docker run --rm -v "$(PWD)/$(OUT_DIR)":/data faa-nasr fetch-weather --out /data
 	docker run --rm -v "$(PWD)/$(OUT_DIR)":/data faa-nasr fetch-tfrs --out /data
 

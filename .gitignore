@@ -5,9 +5,17 @@ __pycache__/
 .mypy_cache/
 .venv/
 local_data/
+aviation_data/
 out/
 site/
 dist/
 .coverage*
 .junit.xml
+.mutmut-cache
+html/
 *.sqlite
+/.claude/settings.json
+/.idea/
+/notes.md
+/todo.md
+/parse_cifp/

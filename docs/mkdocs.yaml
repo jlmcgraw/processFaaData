@@ -1,5 +1,5 @@
 site_name: faa-nasr
-site_description: Build SQLite/SpatiaLite databases from the FAA NASR CSV subscription
+site_description: Build SQLite/SpatiaLite databases from aviation-data-mirror NASR and CIFP data
 docs_dir: .
 site_dir: ../site
 nav:

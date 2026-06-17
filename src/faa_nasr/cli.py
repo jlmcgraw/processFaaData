@@ -7,7 +7,7 @@ import typer
 app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
-    help="Build SQLite/SpatiaLite databases from the FAA NASR CSV subscription.",
+    help="Build SQLite/SpatiaLite databases from aviation-data-mirror NASR and CIFP data.",
 )
 
 
@@ -18,18 +18,6 @@ def _root(
     from faa_nasr import _log
 
     _log.set_quiet(quiet)
-
-
-@app.command()
-def fetch(
-    out_dir: Path = typer.Option(Path("./local_data"), "--out", "-o"),
-    edition: str = typer.Option("current", "--edition", help="current or next"),
-    include_obstacles: bool = typer.Option(True, "--obstacles/--no-obstacles"),
-) -> None:
-    """Download the current/next NASR subscription zip and (optionally) the daily DOF."""
-    from faa_nasr import fetch as _fetch
-
-    _fetch.fetch(out_dir=out_dir, edition=edition, include_obstacles=include_obstacles)
 
 
 @app.command("build-tables")
@@ -69,36 +57,33 @@ def build_airspace_cmd(
     airspace.build(nasr_dir=nasr_dir, out_dir=out_dir)
 
 
-@app.command("fetch-edai")
-def fetch_edai_cmd(
-    out_dir: Path = typer.Option(Path("./local_data"), "--out", "-o"),
-    include_pending: bool = typer.Option(
-        False, "--include-pending", help="Also fetch draft 'Pending' datasets."
-    ),
-) -> None:
-    """Download FAA EDAI shapefile datasets from ArcGIS Hub (timestamp-cached).
-
-    Dataset list is fetched dynamically from the FAA's DCAT catalog -- we
-    always pick up the current set instead of relying on a hardcoded GUID list.
-    """
-    from faa_nasr import edai
-
-    edai.fetch(out_dir=out_dir, include_pending=include_pending)
-
-
 @app.command("build-edai")
 def build_edai_cmd(
     out_dir: Path = typer.Option(Path("."), "--out", "-o"),
-    work_dir: Path = typer.Option(Path("./local_data"), "--work-dir"),
-    include_pending: bool = typer.Option(
-        False, "--include-pending", help="Also include draft 'Pending' datasets."
+    edai_dir: Path | None = typer.Option(
+        None,
+        "--edai-dir",
+        help=(
+            "Directory containing extracted EDAI shapefiles. "
+            "Defaults to aviation-data-mirror manifest."
+        ),
     ),
+    mirror_root: Path = typer.Option(Path("./aviation_data"), "--mirror-root"),
+    mirror_manifest: Path | None = typer.Option(None, "--mirror-manifest"),
 ) -> None:
-    """Fetch EDAI shapefile datasets and build edai_spatialite.sqlite."""
-    from faa_nasr import edai
+    """Build edai_spatialite.sqlite from aviation-data-mirror EDAI artifacts."""
+    from faa_nasr import edai, mirror
 
-    fetched = edai.fetch(out_dir=work_dir, include_pending=include_pending)
-    edai.build(out_dir=out_dir, extract_dir=fetched.extract_dir)
+    try:
+        extract_dir = edai_dir or mirror.resolve_edai_dir(
+            manifest=mirror.load_manifest(mirror_root, mirror_manifest),
+            mirror_root=mirror_root,
+        )
+    except FileNotFoundError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    if extract_dir is None:
+        raise FileNotFoundError("No EDAI artifacts found in the aviation-data-mirror manifest.")
+    edai.build(out_dir=out_dir, extract_dir=extract_dir)
 
 
 @app.command("fetch-weather")
@@ -131,30 +116,148 @@ def fetch_tfrs_cmd(
     tfr.fetch(out_dir=out_dir)
 
 
+@app.command("build-cifp")
+def build_cifp_cmd(
+    cifp_file: Path = typer.Argument(..., help="Path to FAACIFP18 file."),
+    db: Path = typer.Option(Path("cifp.sqlite"), "--db"),
+) -> None:
+    """Parse FAACIFP18 into SQLite (with SpatiaLite geometry for lat/lon fields)."""
+    from faa_nasr import cifp
+
+    cifp.build(cifp_path=cifp_file, db_path=db)
+
+
+@app.command("build-cifp-spatial")
+def build_cifp_spatial_cmd(
+    db: Path = typer.Argument(..., help="cifp.sqlite produced by build-cifp."),
+    design_speed: float = typer.Option(
+        150.0,
+        "--design-speed",
+        help=(
+            "Design speed in knots used to compute turn-anticipation arc radius "
+            "(r = V / (60·π) nm, standard 3°/s rate). "
+            "Use 0 for straight fix-to-fix lines."
+        ),
+    ),
+) -> None:
+    """Add LINESTRING procedure-path geometries to an existing cifp.sqlite.
+
+    Creates the ``procedure_paths`` SpatiaLite table with one row per unique
+    (airport, procedure, transition) combination, covering IAP/SID/STAR and
+    heliport equivalents.  Requires mod_spatialite — run inside the container.
+    """
+    from faa_nasr import cifp
+
+    cifp.build_spatial(db_path=db, design_speed_kts=design_speed)
+
+
 @app.command()
 def build(
     out_dir: Path = typer.Option(Path("."), "--out", "-o"),
-    work_dir: Path = typer.Option(Path("./local_data"), "--work-dir"),
-    edition: str = typer.Option("current", "--edition"),
-    include_pending_edai: bool = typer.Option(
-        False, "--include-pending-edai", help="Also include draft 'Pending' EDAI datasets."
+    mirror_root: Path = typer.Option(Path("./aviation_data"), "--mirror-root"),
+    mirror_manifest: Path | None = typer.Option(None, "--mirror-manifest"),
+    nasr_dir: Path | None = typer.Option(
+        None,
+        "--nasr-dir",
+        help="Top-level extracted NASR directory. Defaults to aviation-data-mirror manifest.",
+    ),
+    csv_dir: Path | None = typer.Option(
+        None,
+        "--csv-dir",
+        help="Extracted NASR CSV directory. Defaults to aviation-data-mirror manifest.",
+    ),
+    obstacle_csv: Path | None = typer.Option(
+        None,
+        "--obstacle-csv",
+        help="Optional DOF.CSV path. Defaults to aviation-data-mirror manifest when available.",
+    ),
+    edai_dir: Path | None = typer.Option(
+        None,
+        "--edai-dir",
+        help="Extracted EDAI shapefile directory. Defaults to aviation-data-mirror manifest.",
+    ),
+    cifp_file: Path | None = typer.Option(
+        None,
+        "--cifp-file",
+        help="Path to FAACIFP18. Defaults to aviation-data-mirror manifest when --cifp is enabled.",
+    ),
+    include_cifp: bool = typer.Option(
+        True, "--cifp/--no-cifp", help="Build cifp.sqlite from aviation-data-mirror CIFP data."
+    ),
+    include_edai: bool = typer.Option(
+        True,
+        "--edai/--no-edai",
+        help="Build edai_spatialite.sqlite from aviation-data-mirror EDAI data.",
     ),
 ) -> None:
-    """End-to-end pipeline: fetch -> build-tables -> build-spatial -> build-airspace -> build-edai."""
-    from faa_nasr import airspace, edai, geometry, tables
-    from faa_nasr import fetch as _fetch
+    """End-to-end pipeline from aviation-data-mirror data to SQLite/SpatiaLite outputs."""
+    from faa_nasr import airspace, cifp, edai, geometry, mirror, tables
 
-    fetched = _fetch.fetch(out_dir=work_dir, edition=edition, include_obstacles=True)
+    mirror_inputs: mirror.MirrorInputs | None = None
+    if (
+        nasr_dir is None
+        or csv_dir is None
+        or (include_cifp and cifp_file is None)
+        or (include_edai and edai_dir is None)
+    ):
+        try:
+            mirror_inputs = mirror.resolve_inputs(
+                mirror_root=mirror_root,
+                manifest_path=mirror_manifest,
+                include_cifp=include_cifp,
+                include_edai=include_edai,
+            )
+        except FileNotFoundError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+
+    resolved_nasr_dir = nasr_dir or _required_mirror_input(mirror_inputs, "nasr_dir")
+    resolved_csv_dir = csv_dir or _required_mirror_input(mirror_inputs, "csv_dir")
+    resolved_obstacle_csv = (
+        obstacle_csv
+        if obstacle_csv is not None
+        else _optional_mirror_input(mirror_inputs, "obstacle_csv")
+    )
+    resolved_cifp_file = (
+        cifp_file if cifp_file is not None else _optional_mirror_input(mirror_inputs, "cifp_file")
+    )
+    resolved_edai_dir = (
+        edai_dir if edai_dir is not None else _optional_mirror_input(mirror_inputs, "edai_dir")
+    )
+
     nasr_db = out_dir / "nasr.sqlite"
     tables.build(
-        csv_dir=fetched.csv_dir,
+        csv_dir=resolved_csv_dir,
         db_path=nasr_db,
-        obstacle_csv=fetched.obstacle_csv,
+        obstacle_csv=resolved_obstacle_csv,
     )
     geometry.build(db_path=nasr_db)
-    airspace.build(nasr_dir=fetched.nasr_dir, out_dir=out_dir)
-    edai_fetched = edai.fetch(out_dir=work_dir, include_pending=include_pending_edai)
-    edai.build(out_dir=out_dir, extract_dir=edai_fetched.extract_dir)
+    airspace.build(nasr_dir=resolved_nasr_dir, out_dir=out_dir)
+    if include_edai:
+        if resolved_edai_dir is None:
+            raise FileNotFoundError(
+                "No EDAI input found. Pass --edai-dir or refresh aviation_data."
+            )
+        edai.build(out_dir=out_dir, extract_dir=resolved_edai_dir)
+    if include_cifp:
+        if resolved_cifp_file is None:
+            raise FileNotFoundError(
+                "No CIFP input found. Pass --cifp-file or refresh aviation_data."
+            )
+        cifp.build(cifp_path=resolved_cifp_file, db_path=out_dir / "cifp.sqlite")
+
+
+def _required_mirror_input(inputs: object | None, attr: str) -> Path:
+    value = _optional_mirror_input(inputs, attr)
+    if value is None:
+        raise FileNotFoundError(f"aviation-data-mirror did not provide required input {attr}.")
+    return value
+
+
+def _optional_mirror_input(inputs: object | None, attr: str) -> Path | None:
+    if inputs is None:
+        return None
+    value = getattr(inputs, attr)
+    return value if isinstance(value, Path) else None
 
 
 if __name__ == "__main__":  # pragma: no cover
