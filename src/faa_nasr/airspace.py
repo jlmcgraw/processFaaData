@@ -11,7 +11,6 @@ import re
 import sqlite3
 import warnings
 import xml.etree.ElementTree as ET
-import zipfile
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -51,9 +50,6 @@ class LayerSource(NamedTuple):
 # XLink graph for a single AIXM XML. e.g.
 # FeatureRef("AirTrafficControlService", "ATC1") -> {"clientAirspace": "uuid-..."}.
 type FkLookup = dict[FeatureRef, dict[str, str]]
-
-# Mapping from XML path to that XML's resolved FK lookup.
-type PerXmlFkLookup = dict[Path, FkLookup]
 
 # A getter that pulls one of the column dicts off a `_SourceChunk`. Used by
 # `_stack_column` so callers can stack either the regular field columns or
@@ -132,18 +128,27 @@ def _build_sua(nasr_dir: Path, dst: Path) -> None:
     airspace name, so per-airspace queries are still possible.
     """
     _log.step(f"build-airspace special-use -> {dst}")
-    saa_zip = nasr_dir / "Additional_Data" / "AIXM" / "SAA-AIXM_5_Schema" / "SaaSubscriberFile.zip"
-    if not saa_zip.is_file():
-        _log.info(f"  no SaaSubscriberFile.zip at {saa_zip} -- skipping")
+    saa_dir = nasr_dir / "Additional_Data" / "AIXM"
+    if not saa_dir.is_dir():
+        _log.info(f"  no AIXM directory under {nasr_dir} -- skipping")
         return
 
-    extract_dir = saa_zip.parent / "extracted"
-    extract_dir.mkdir(exist_ok=True)
-    _extract_recursive(saa_zip, extract_dir)
+    # Target the specific SAA subscriber file location; fall back to broad
+    # rglob only if the expected directory is absent (older NASR layouts).
+    saa_sub_dir = (
+        saa_dir / "SAA-AIXM_5_Schema" / "SaaSubscriberFile" / "Saa_Sub_File"
+    )
+    if saa_sub_dir.is_dir():
+        xml_files = sorted(saa_sub_dir.glob("*.xml"))
+    else:
+        xml_files = [p for p in sorted(saa_dir.rglob("*.xml")) if "xsd" not in p.parts]
+
+    if not xml_files:
+        _log.info(f"  no XML files under {saa_dir} -- skipping")
+        return
 
     if dst.exists():
         dst.unlink()
-    xml_files = [p for p in sorted(extract_dir.rglob("*.xml")) if "xsd" not in p.parts]
 
     # Pre-init SpatiaLite metadata in dst so subsequent writes (which may go
     # through raw sqlite3 first if the alphabetically-first layer is attribute-
@@ -151,9 +156,9 @@ def _build_sua(nasr_dir: Path, dst: Path) -> None:
     # without setting up geometry_columns.
     _init_spatialite_db(dst)
 
-    # Pass 1: discover layers AND extract XLink relationships per XML in one walk.
+    # Pass 1: discover layers per XML (no FK extraction here — done lazily
+    # in _read_layer_source to avoid holding 1000+ FK maps in memory).
     layer_buckets: dict[str, list[LayerSource]] = defaultdict(list)
-    fk_per_xml: PerXmlFkLookup = {}
     for xml in tqdm(
         xml_files, desc="  scanning XMLs", unit="file", disable=_log.is_quiet(), leave=False
     ):
@@ -163,10 +168,6 @@ def _build_sua(nasr_dir: Path, dst: Path) -> None:
                 layer_buckets[name].append(LayerSource(xml=xml, source_layer=name))
         except Exception:
             continue
-        try:
-            fk_per_xml[xml] = _extract_xlinks(xml)
-        except ET.ParseError:
-            fk_per_xml[xml] = {}
 
     # Pass 2: read + concat + write each merged layer (no spatial index yet).
     geometry_layers: list[str] = []
@@ -182,7 +183,7 @@ def _build_sua(nasr_dir: Path, dst: Path) -> None:
         bar.set_postfix_str(source_name, refresh=False)
         target = _safe_name(source_name)
         n, has_geom = _merge_and_write_layer(
-            dst=dst, sources=sources, target_layer=target, fk_per_xml=fk_per_xml
+            dst=dst, sources=sources, target_layer=target
         )
         if n > 0:
             total_features += n
@@ -207,13 +208,6 @@ def _build_sua(nasr_dir: Path, dst: Path) -> None:
 
     _log.info(f"  wrote {len(layer_buckets)} layers / {total_features:,} features")
 
-
-def _extract_recursive(zip_path: Path, dest: Path) -> None:
-    """Extract `zip_path` into `dest`, then recursively extract any nested .zip files."""
-    with zipfile.ZipFile(zip_path) as zf:
-        zf.extractall(dest)
-    for nested in list(dest.rglob("*.zip")):
-        _extract_recursive(nested, nested.parent / nested.stem)
 
 
 def _copy_shapefile(src: Path, dst: Path, layer_name: str) -> int:
@@ -305,12 +299,11 @@ class _MergedLayer:
 def _read_layer_source(
     xml: Path,
     source_layer: str,
-    fk_lookup: FkLookup,
 ) -> _SourceChunk | None:
     """Read one source via pyogrio and resolve its per-row XLink FKs.
 
-    Returns `None` if the source is unreadable or empty. `fk_lookup` is the
-    resolved-XLink map for the source XML (i.e. `fk_per_xml[xml]`).
+    Returns `None` if the source is unreadable or empty. XLinks are extracted
+    from the XML inline so we never hold FK maps for more than one file at a time.
     """
     try:
         meta, _fids, geometry, field_data = pyogrio.raw.read(xml, layer=source_layer)
@@ -322,7 +315,13 @@ def _read_layer_source(
 
     fields = dict(zip(meta["fields"], field_data, strict=True))
 
-    # Resolve per-row FKs by looking up each row's gml_id in fk_lookup.
+    # Extract XLinks from this XML and immediately discard the parse tree so
+    # we only hold one file's FK map in memory at a time.
+    try:
+        fk_lookup = _extract_xlinks(xml)
+    except ET.ParseError:
+        fk_lookup = {}
+
     fks: dict[str, list[object]] = {}
     gml_ids = fields.get("gml_id")
     for i in range(n_rows):
@@ -431,15 +430,13 @@ def _merge_and_write_layer(
     dst: Path,
     sources: list[LayerSource],
     target_layer: str,
-    fk_per_xml: PerXmlFkLookup,
 ) -> tuple[int, bool]:
     """Orchestrator: read all sources, merge them, write once. Returns
     (row_count, has_geometry)."""
     chunks = [
         chunk
         for src in sources
-        if (chunk := _read_layer_source(src.xml, src.source_layer, fk_per_xml.get(src.xml, {})))
-        is not None
+        if (chunk := _read_layer_source(src.xml, src.source_layer)) is not None
     ]
     merged = _merge_chunks(chunks)
     if merged is None:

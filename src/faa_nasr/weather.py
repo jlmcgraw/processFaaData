@@ -56,9 +56,7 @@ WEATHER_FEEDS: tuple[WeatherFeed, ...] = (
         "metars", "metar", {"format": "geojson", "hours": 2, "bbox": _WEATHER_BBOX}, "Point"
     ),
     WeatherFeed("tafs", "taf", {"format": "geojson", "hours": 12, "bbox": _WEATHER_BBOX}, "Point"),
-    WeatherFeed(
-        "pireps", "pirep", {"format": "geojson", "age": 2, "bbox": _WEATHER_BBOX}, "Point"
-    ),
+    WeatherFeed("pireps", "pirep", {"format": "geojson", "age": 2, "bbox": _WEATHER_BBOX}, "Point"),
     WeatherFeed("airsigmets", "airsigmet", {"format": "geojson"}, "Polygon"),
     WeatherFeed("isigmets", "isigmet", {"format": "geojson"}, "Polygon"),
 )

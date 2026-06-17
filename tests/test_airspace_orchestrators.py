@@ -6,7 +6,6 @@ and verify the orchestration logic (file discovery, dispatch, ordering).
 
 from __future__ import annotations
 
-import zipfile
 from pathlib import Path
 
 import pytest
@@ -67,38 +66,16 @@ def test_build_class_airspace_unlinks_existing_dst_first(monkeypatch: pytest.Mon
 # ---------------------------------------------------------------------------
 
 
-def _make_minimal_saa_layout(tmp_path: Path) -> Path:
-    """Create the directory layout _build_sua expects, with a no-op SAA zip."""
-    saa_dir = tmp_path / "Additional_Data" / "AIXM" / "SAA-AIXM_5_Schema"
+def _make_minimal_saa_layout(tmp_path: Path, *, xml_files: list[str] | None = None) -> Path:
+    """Create the NASR directory layout _build_sua expects with pre-extracted XML files.
+
+    Pass `xml_files` to place named XML files under the AIXM directory.
+    """
+    saa_dir = tmp_path / "Additional_Data" / "AIXM" / "SAA-AIXM_5_Schema" / "SaaSubscriberFile"
     saa_dir.mkdir(parents=True)
-    saa_zip = saa_dir / "SaaSubscriberFile.zip"
-    # Inner file content doesn't matter; we mock everything that reads it.
-    with zipfile.ZipFile(saa_zip, "w") as zf:
-        zf.writestr("placeholder.xml", b"<root/>")
+    for name in xml_files or []:
+        (saa_dir / name).write_text("<root/>")
     return tmp_path
-
-
-def test_build_sua_short_circuits_when_no_xml_files(monkeypatch: pytest.MonkeyPatch, tmp_path):
-    """If the recursive extraction finds no *.xml files (after filtering xsd/),
-    we still init the spatialite DB but don't merge anything."""
-    nasr_dir = _make_minimal_saa_layout(tmp_path)
-
-    init_called = False
-
-    def fake_init(dst: Path) -> None:
-        nonlocal init_called
-        init_called = True
-
-    def fake_extract(zip_path: Path, dest: Path) -> None:
-        # Don't extract anything, so _build_sua sees zero XML files.
-        dest.mkdir(exist_ok=True)
-
-    monkeypatch.setattr(airspace, "_init_spatialite_db", fake_init)
-    monkeypatch.setattr(airspace, "_extract_recursive", fake_extract)
-
-    airspace._build_sua(nasr_dir=nasr_dir, dst=tmp_path / "sua.sqlite")
-
-    assert init_called is True
 
 
 class _FakeConn:
@@ -126,13 +103,10 @@ class _FakeConn:
 def test_build_sua_orchestrates_scan_merge_and_index(monkeypatch: pytest.MonkeyPatch, tmp_path):
     """Full happy path with all pyogrio + spatialite calls mocked. Verifies
     that scan -> merge -> spatial-index runs in the expected order."""
-    nasr_dir = _make_minimal_saa_layout(tmp_path)
+    nasr_dir = _make_minimal_saa_layout(
+        tmp_path, xml_files=["AIRSPACE_A.xml", "AIRSPACE_B.xml"]
+    )
     dst = tmp_path / "sua.sqlite"
-
-    def fake_extract(zip_path: Path, dest: Path) -> None:
-        dest.mkdir(parents=True, exist_ok=True)
-        (dest / "AIRSPACE_A.xml").write_text("<root/>")
-        (dest / "AIRSPACE_B.xml").write_text("<root/>")
 
     init_called: list[Path] = []
 
@@ -163,7 +137,6 @@ def test_build_sua_orchestrates_scan_merge_and_index(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(airspace.sqlite3, "connect", lambda _path: fake_conn)
     monkeypatch.setattr(airspace, "_load_mod_spatialite", lambda _conn: None)
 
-    monkeypatch.setattr(airspace, "_extract_recursive", fake_extract)
     monkeypatch.setattr(airspace, "_init_spatialite_db", fake_init)
     monkeypatch.setattr(airspace, "_extract_xlinks", fake_extract_xlinks)
     monkeypatch.setattr(airspace.pyogrio, "list_layers", fake_list_layers)
@@ -183,19 +156,15 @@ def test_build_sua_orchestrates_scan_merge_and_index(monkeypatch: pytest.MonkeyP
 
 def test_build_sua_unlinks_pre_existing_dst(monkeypatch: pytest.MonkeyPatch, tmp_path):
     """If dst already exists, _build_sua deletes it before re-initialising."""
-    nasr_dir = _make_minimal_saa_layout(tmp_path)
+    nasr_dir = _make_minimal_saa_layout(tmp_path, xml_files=["PLACEHOLDER.xml"])
     dst = tmp_path / "sua.sqlite"
     dst.write_text("stale leftover")
 
     seen_dst_at_init: list[bool] = []
 
-    def fake_extract(zip_path: Path, dest: Path) -> None:
-        dest.mkdir(parents=True, exist_ok=True)
-
     def fake_init(d: Path) -> None:
         seen_dst_at_init.append(d.exists())
 
-    monkeypatch.setattr(airspace, "_extract_recursive", fake_extract)
     monkeypatch.setattr(airspace, "_init_spatialite_db", fake_init)
 
     airspace._build_sua(nasr_dir=nasr_dir, dst=dst)
@@ -208,12 +177,7 @@ def test_build_sua_skips_xml_when_list_layers_raises(monkeypatch: pytest.MonkeyP
     """A malformed/unreadable XML should not abort the whole build -- just
     skip that file and continue. (Regression for the bare `except Exception`
     in _build_sua's scan loop.)"""
-    nasr_dir = _make_minimal_saa_layout(tmp_path)
-
-    def fake_extract(zip_path: Path, dest: Path) -> None:
-        dest.mkdir(parents=True, exist_ok=True)
-        (dest / "GOOD.xml").write_text("<root/>")
-        (dest / "BAD.xml").write_text("<root/>")
+    nasr_dir = _make_minimal_saa_layout(tmp_path, xml_files=["GOOD.xml", "BAD.xml"])
 
     seen: list[Path] = []
 
@@ -229,7 +193,6 @@ def test_build_sua_skips_xml_when_list_layers_raises(monkeypatch: pytest.MonkeyP
         merged.extend(sources)
         return (len(sources), False)
 
-    monkeypatch.setattr(airspace, "_extract_recursive", fake_extract)
     monkeypatch.setattr(airspace, "_init_spatialite_db", lambda _d: None)
     monkeypatch.setattr(airspace.pyogrio, "list_layers", fake_list_layers)
     monkeypatch.setattr(airspace, "_extract_xlinks", lambda _p: {})
@@ -249,15 +212,8 @@ def test_build_sua_handles_xml_parse_errors_gracefully(monkeypatch: pytest.Monke
     `except ET.ParseError` branch in _build_sua.)"""
     import xml.etree.ElementTree as ET
 
-    nasr_dir = _make_minimal_saa_layout(tmp_path)
+    nasr_dir = _make_minimal_saa_layout(tmp_path, xml_files=["BROKEN.xml"])
     dst = tmp_path / "sua.sqlite"
-
-    def fake_extract(zip_path: Path, dest: Path) -> None:
-        dest.mkdir(parents=True, exist_ok=True)
-        (dest / "BROKEN.xml").write_text("<not valid xml")
-
-    def fake_init(d: Path) -> None:
-        pass
 
     def fake_list_layers(p: Path) -> list[tuple[str, str]]:
         return [("Airspace", "Polygon")]
@@ -275,8 +231,7 @@ def test_build_sua_handles_xml_parse_errors_gracefully(monkeypatch: pytest.Monke
             fk_results[src.xml] = fk_per_xml.get(src.xml, "MISSING")  # type: ignore[assignment]
         return (0, False)
 
-    monkeypatch.setattr(airspace, "_extract_recursive", fake_extract)
-    monkeypatch.setattr(airspace, "_init_spatialite_db", fake_init)
+    monkeypatch.setattr(airspace, "_init_spatialite_db", lambda _d: None)
     monkeypatch.setattr(airspace, "_extract_xlinks", fake_extract_xlinks)
     monkeypatch.setattr(airspace.pyogrio, "list_layers", fake_list_layers)
     monkeypatch.setattr(airspace, "_merge_and_write_layer", fake_merge_and_write)

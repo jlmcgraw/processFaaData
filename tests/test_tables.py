@@ -82,6 +82,17 @@ def test_load_csv_replaces_spaces_in_headers(tmp_path):
     assert cols == ["OAS", "VERIFIED_STATUS"]
 
 
+def test_load_csv_replaces_invalid_utf8(tmp_path):
+    # errors="replace" means bad bytes become U+FFFD instead of raising UnicodeDecodeError
+    csv_path = tmp_path / "BAD.csv"
+    csv_path.write_bytes(b"col_a\n\xff\n")
+    conn = sqlite3.connect(":memory:")
+
+    n = _load_csv(conn, csv_path, table_name="BAD")
+
+    assert n == 1
+
+
 def test_load_csv_drops_existing_table(tmp_path):
     """Running build twice should replace the table, not error or append."""
     csv = tmp_path / "T.csv"

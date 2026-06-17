@@ -1,7 +1,7 @@
 [project]
 name = "faa-nasr"
 version = "0.1.0"
-description = "Build SQLite/SpatiaLite databases from the FAA's 28-day NASR CSV subscription"
+description = "Build SQLite/SpatiaLite databases from aviation-data-mirror NASR and CIFP data"
 readme = "README.md"
 authors = [
     { name = "jlmcgraw", email = "jlmcgraw@gmail.com" }
@@ -25,8 +25,10 @@ build-backend = "uv_build"
 dev = [
     "basedpyright>=1.20",
     "mkdocs>=1.6",
+    "mutmut>=3",
     "mypy>=1.10",
     "pyclean>=3.0",
+    "pypdf>=6.11.0",
     "pytest>=8",
     "pytest-cov>=5",
     "ruff>=0.6",
@@ -67,6 +69,10 @@ python_version = "3.12"
 # pyogrio doesn't ship a py.typed marker, so mypy can't see its types.
 module = ["pyogrio", "pyogrio.*"]
 ignore_missing_imports = true
+
+[tool.mutmut]
+paths_to_mutate = ["src/faa_nasr/"]
+test_command = "uv run pytest"
 
 [tool.basedpyright]
 # basedpyright defaults to its own "all" mode -- much stricter than pyright's

@@ -33,9 +33,36 @@ def test_dms_to_decimal_latitude_out_of_range():
         dms_to_decimal(91, 0, 0, "N")
 
 
+def test_dms_to_decimal_south_out_of_range():
+    with pytest.raises(ValueError, match="out of range"):
+        dms_to_decimal(91, 0, 0, "S")
+
+
+def test_dms_to_decimal_lat_at_exactly_90():
+    # 90° is the pole — valid; guard uses >, not >=
+    assert dms_to_decimal(90, 0, 0, "N") == pytest.approx(90.0)
+    assert dms_to_decimal(90, 0, 0, "S") == pytest.approx(-90.0)
+
+
 def test_dms_to_decimal_longitude_out_of_range():
     with pytest.raises(ValueError, match="out of range"):
         dms_to_decimal(181, 0, 0, "E")
+
+
+def test_dms_to_decimal_west_out_of_range():
+    with pytest.raises(ValueError, match="out of range"):
+        dms_to_decimal(181, 0, 0, "W")
+
+
+def test_dms_to_decimal_lon_at_exactly_180():
+    # 180° is valid (antimeridian); guard uses >, not >=
+    assert dms_to_decimal(180, 0, 0, "E") == pytest.approx(180.0)
+    assert dms_to_decimal(180, 0, 0, "W") == pytest.approx(-180.0)
+
+
+def test_dms_to_decimal_seconds_precision():
+    # 3600 seconds == 1 degree exactly; /3601 instead of /3600 would give ~0.9997
+    assert dms_to_decimal(0, 0, 3600, "E") == pytest.approx(1.0)
 
 
 def test_parse_dms_with_dashes():
